@@ -1,7 +1,4 @@
-using System;
-using System.Linq;
-
-namespace Eidos.Parser.Tests;
+namespace Eidos.Core.Tests;
 
 public class SpecExampleTests
 {

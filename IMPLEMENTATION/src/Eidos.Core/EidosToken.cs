@@ -1,4 +1,4 @@
-namespace Eidos.Parser;
+namespace Eidos.Core;
 
 public enum EidosTokenKind
 {

@@ -1,6 +1,4 @@
-using System.Collections.Generic;
-
-namespace Eidos.Parser;
+namespace Eidos.Core;
 
 public abstract record EidosSyntaxNode(SourceSpan Span);
 

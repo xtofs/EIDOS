@@ -1,9 +1,7 @@
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Globalization;
 
-namespace Eidos.Parser;
+namespace Eidos.Core;
 
 public sealed class EidosGrammarParser
 {

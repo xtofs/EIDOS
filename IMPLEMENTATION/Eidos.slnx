@@ -1,13 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <Solution>
-  <Folder Name="/samples/">
-    <Project Path="samples/Eidos.Sample.AspNetCore/Eidos.Sample.AspNetCore.csproj" />
-  </Folder>
-  <Folder Name="/src/">
-    <Project Path="src/Eidos.AspNetCore/Eidos.AspNetCore.csproj" />
-    <Project Path="src/EidosParser/EidosParser.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Eidos.AspNetCore.Tests/Eidos.AspNetCore.Tests.csproj" />
-    <Project Path="tests/EidosParser.Tests/EidosParser.Tests.csproj" />
-  </Folder>
+    <Folder Name="/samples/">
+        <Project Path="samples/Eidos.Sample.AspNetCore/Eidos.Sample.AspNetCore.csproj" />
+    </Folder>
+    <Folder Name="/src/">
+        <Project Path="src/Eidos.AspNetCore/Eidos.AspNetCore.csproj" />
+        <Project Path="src/Eidos.Core/Eidos.Core.csproj" />
+    </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/Eidos.AspNetCore.Tests/Eidos.AspNetCore.Tests.csproj" />
+        <Project Path="tests/Eidos.Core.Tests/Eidos.Core.Tests.csproj" />
+    </Folder>
 </Solution>

@@ -1,5 +1,5 @@
 using Eidos.AspNetCore;
-using Eidos.Parser;
+using Eidos.Core;
 using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
 
 namespace Eidos.Sample.HumanResources;

@@ -1,8 +1,7 @@
 using System.IO.Pipelines;
-using System.Linq;
 using System.Text;
 
-namespace Eidos.Parser.Tests;
+namespace Eidos.Core.Tests;
 
 public class EidosSchemaReaderTests
 {

@@ -1,4 +1,4 @@
-namespace Eidos.Parser.Analysis;
+namespace Eidos.Core.Analysis;
 
 /// <summary>
 /// Classification of a state machine per spec §5.1 Determinism Analysis.

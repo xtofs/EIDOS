@@ -3,6 +3,8 @@
         "Activatable",
         "DQUOTE",
         "HTAB",
-        "writeonce"
+        "lifecycles",
+        "writeonce",
+        "xunit"
     ]
 }

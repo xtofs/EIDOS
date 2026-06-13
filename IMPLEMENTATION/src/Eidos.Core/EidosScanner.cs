@@ -1,8 +1,6 @@
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 
-namespace Eidos.Parser;
+namespace Eidos.Core;
 
 public ref struct EidosScanner
 {

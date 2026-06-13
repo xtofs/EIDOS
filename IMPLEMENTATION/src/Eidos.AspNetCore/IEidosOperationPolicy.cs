@@ -1,4 +1,4 @@
-using Eidos.Parser;
+using Eidos.Core;
 
 namespace Eidos.AspNetCore;
 

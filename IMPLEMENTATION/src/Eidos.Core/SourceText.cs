@@ -1,4 +1,4 @@
-namespace Eidos.Parser;
+namespace Eidos.Core;
 
 public readonly record struct SourcePosition(long Offset, int Line, int Column)
 {

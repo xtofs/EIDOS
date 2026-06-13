@@ -1,4 +1,5 @@
-using Eidos.Parser;
+using Eidos.Core;
+using Eidos.AspNetCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -228,7 +229,7 @@ public class EidosMapBuilderTests
 
     private static IResult PersonDelete(string key) => Results.NoContent();
 
-    private static IResult PersonTransition(string key, StateTransitionRequest request) => Results.Ok(new { key, request.State });
+    private static IResult PersonTransition(string key, Eidos.AspNetCore.StateTransitionRequest request) => Results.Ok(new { key, request.State });
 
     private sealed record PersonPatchRequest(string? Name);
 

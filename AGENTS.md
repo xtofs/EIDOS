@@ -105,9 +105,9 @@ UFO is mentioned in the abstract and concept table as the conceptual grounding, 
 
 The implementation lives in [IMPLEMENTATION/](IMPLEMENTATION/) (`Eidos.slnx`, .NET `net10.0`). Three projects plus a sample and tests:
 
-**`src/EidosParser`** — hand-written scanner + recursive-descent parser, no codegen dependency.
+**`src/EidosCore`** (assembly `EidosCore`, namespaces `Eidos.Core` / `Eidos.Core.Analysis`) — hand-written scanner + recursive-descent parser, no codegen dependency. (Formerly `EidosParser` / `Eidos.Parser`; renamed since it holds more than the parser.)
 - `EidosScanner` (`ref struct`, `SequenceReader<char>`) tokenizes; `EidosGrammarParser` builds the AST.
-- `EidosSyntax.cs` — the AST as C# records. Note: AST uses `Phase`-prefixed names (`PhaseSetSyntax`, `InitialPhase`, etc.) for what the surface now calls `state`.
+- `EidosSyntax.cs` — the AST as C# records (`state`-named nodes: `StateSetSyntax`, `InitialState`, etc.).
 - `EidosSchemaReader` — async `PipeReader` entry point for parsing from file/stream.
 - `Analysis/LifecycleAnalyzer` — the §5.1 determinism analysis (Deterministic / NonDeterministic / Ambiguous, keyed on transition names).
 
