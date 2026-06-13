@@ -167,10 +167,17 @@ Every entity and relationship may declare a state machine, either inline or by r
 
 State transitions and property updates are deliberately separated into two distinct operations:
 
-- **`PATCH /{id}`** — partial property update. Body contains only property fields. Never changes the state.
+- **`PATCH /{id}`** — property update, expressed as a JSON Patch (RFC 6902) document with media type `application/json-patch+json`. The body is a sequence of operations (`add`, `remove`, `replace`, …) over the resource's properties. Never changes the state: operations targeting the reserved fields (`_self`, `_type`, `_state`) or a property not writable in the current state are rejected with `400 Bad Request`.
 - **`PUT /{id}/_state`** — lifecycle transition. Body declares the target state and, when required, the transition name.
 
-This separation is unambiguous at the routing level and makes the intent explicit to API clients.
+This separation is unambiguous at the routing level and makes the intent explicit to API clients. A JSON Patch request that replaces a property looks like:
+
+```http
+PATCH /persons/42
+Content-Type: application/json-patch+json
+
+[ { "op": "replace", "path": "/email", "value": "ada@new.example.com" } ]
+```
 
 The `PUT /_state` request body is:
 
@@ -548,14 +555,14 @@ From a valid Eidos schema the compiler generates an OpenAPI 3.x document. The ma
 | `relationship R`                       | `GET /rs`, `POST /rs`, `GET /rs/{id}`, `PATCH /rs/{id}`, `PUT /rs/{id}/_state`, `DELETE /rs/{id}` plus projection collections on each participant |
 | Every representation                   | Always includes reserved fields `_self` (canonical URL), `_type` (TypeName), `_state` (current state). Designers do not declare these.            |
 | `relationship R` — `?expand`           | `GET /rs/{id}?expand=<participant>[,<participant>]` embeds inline representations of the named participants instead of URLs                       |
-| `PATCH /{id}`                          | Partial property update. Body contains only property fields. Never changes the state.                                                             |
+| `PATCH /{id}`                          | Property update via JSON Patch (RFC 6902), media type `application/json-patch+json`; body is an operations array. Never changes the state — ops on reserved fields or properties not writable in the current state are rejected (`400`). |
 | `PUT /{id}/_state` — deterministic     | Body: `{ "state": "<TargetState>" }`. Transition inferred by server from current state and target state.                                          |
 | `PUT /{id}/_state` — non-deterministic | Body: `{ "state": "<TargetState>", "transition": "<TransitionName>" }`. `transition` is conditionally required per OpenAPI schema.                |
 | `Immutable` archetype                  | No PATCH, PUT, or DELETE operations generated                                                                                                     |
 | `ReadOnly` archetype                   | GET only; no POST, PATCH, PUT, DELETE                                                                                                             |
 | `SoftDeletable` archetype              | DELETE sets state to Deleted; `GET /es` excludes Deleted by default; `GET /es?include=deleted` available                                          |
 | `state-visibility`                     | Properties only appear in response schemas for the listed states                                                                                  |
-| `writable-in`                          | Properties omitted from PATCH request schemas outside the listed states                                                                           |
+| `writable-in`                          | A property is patchable only in the listed states; a JSON Patch op targeting it outside those states is rejected (`400`)                          |
 | `coupling` rules                       | Documented in operation descriptions via `x-eidos-coupling` extensions; enforced server-side                                                      |
 
 ### 5.3 Archetype Composition
@@ -681,8 +688,9 @@ GET    /employments/{id}          -> 200 Employment
 GET    /employments/{id}?expand=employee,employer
                                   -> 200 Employment  (participants embedded inline)
 
-PATCH  /employments/{id}          -> 200 Employment  (property update only)
-         body: { "title": "Lead Engineer", "salary": { ... } }
+PATCH  /employments/{id}          -> 200 Employment  (JSON Patch; property update only)
+         Content-Type: application/json-patch+json
+         body: [ { "op": "replace", "path": "/title", "value": "Lead Engineer" } ]
 
 PUT    /employments/{id}/_state   -> 200 Employment  (lifecycle transition)
          deterministic body:     { "state": "Active" }
@@ -698,7 +706,9 @@ GET    /organizations/{id}/employments  -> 200 list<Employment>  (employer proje
                                            each item includes _self pointing to /employments/{id}
 
 GET    /persons/{id}              -> 200 Person
-PATCH  /persons/{id}              -> 200 Person  (property update only)
+PATCH  /persons/{id}              -> 200 Person  (JSON Patch; property update only)
+         Content-Type: application/json-patch+json
+         body: [ { "op": "replace", "path": "/email", "value": "ada@new.example.com" } ]
 PUT    /persons/{id}/_state       -> 200 Person
          body: { "state": "Active" }      (guard taxIdVerified enforced server-side)
          body: { "state": "Suspended" }

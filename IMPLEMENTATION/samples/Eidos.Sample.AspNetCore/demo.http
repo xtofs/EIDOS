@@ -30,11 +30,17 @@ content-type: application/json
 
 { "state": "Active" }
 
-### property update: PATCH only touches properties and never changes state
+### property update: JSON Patch (RFC 6902). PATCH only touches properties, never state.
 PATCH {{base}}/persons/ada
-content-type: application/json
+content-type: application/json-patch+json
 
-{ "email": "ada.lovelace@example.com" }
+[ { "op": "replace", "path": "/email", "value": "ada.lovelace@example.com" } ]
+
+### property update is restricted to patchable properties: patching /state is rejected (400)
+PATCH {{base}}/persons/ada
+content-type: application/json-patch+json
+
+[ { "op": "replace", "path": "/state", "value": "Inactive" } ]
 
 ##############
 ## employment

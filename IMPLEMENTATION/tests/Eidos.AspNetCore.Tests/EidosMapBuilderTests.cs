@@ -182,7 +182,7 @@ public class EidosMapBuilderTests
         var plain = builder.BuildPlainMetadataDocument();
 
         Assert.Contains("PUT {{baseUrl}}/persons/{key}/_state body: PutState = { \"state\": \"<TargetState>\", \"transition\"?: \"<Transition>\" }", plain, StringComparison.Ordinal);
-        Assert.Contains("PATCH {{baseUrl}}/persons/{key} body: PatchProperties = { ...properties }", plain, StringComparison.Ordinal);
+        Assert.Contains("PATCH {{baseUrl}}/persons/{key} body: PatchProperties = [{ \"op\": \"replace\", \"path\": \"/<prop>\", \"value\": <value> }] (application/json-patch+json)", plain, StringComparison.Ordinal);
     }
 
     [Fact]

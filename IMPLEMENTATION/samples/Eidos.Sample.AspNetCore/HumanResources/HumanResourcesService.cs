@@ -1,5 +1,6 @@
 using Eidos.AspNetCore;
 using Eidos.Parser;
+using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
 
 namespace Eidos.Sample.HumanResources;
 
@@ -32,7 +33,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                     .GetEntity(GetPersonEntity)
                     .Create<PersonCreateRequest>(CreatePerson)
                     .Transition(TransitionPerson)
-                    .Update<PersonPatchRequest>(UpdatePerson)
+                    .Update<JsonPatchDocument<PersonPatch>>(UpdatePerson)
                     .Delete(DeletePerson))
                 .Relationship("Employment", e => e
                     .List(ListEmployments)
@@ -40,7 +41,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                     .GetEntity(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
                     .Create<EmploymentCreateRequest>(CreateEmployment)
                     .Transition(TransitionEmployment)
-                    .Update<EmploymentPatchRequest>(UpdateEmployment)
+                    .Update<JsonPatchDocument<EmploymentPatch>>(UpdateEmployment)
                     .Delete(DeleteEmployment))
                 .MapMetadataEndpoint("/");
         }, options =>
@@ -98,22 +99,45 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         return Results.Ok(updated);
     }
 
-    private async Task<IResult> UpdatePerson(string key, PersonPatchRequest request)
+    // Apply a JSON Patch (RFC 6902) to a restricted patch model, collecting any errors (e.g. an op
+    // targeting a path that isn't on the model) into a validation problem. Returns false + a 400 on error.
+    private static bool TryApplyPatch<T>(JsonPatchDocument<T> patch, T target, out IResult? problem) where T : class
+    {
+        Dictionary<string, string[]>? errors = null;
+        patch.ApplyTo(target, error =>
+        {
+            errors ??= new();
+            var key = error.AffectedObject?.GetType().Name ?? "patch";
+            var prior = errors.TryGetValue(key, out var existing) ? existing : [];
+            errors[key] = [.. prior, error.ErrorMessage];
+        });
+
+        problem = errors is null ? null : TypedResults.ValidationProblem(errors);
+        return errors is null;
+    }
+
+    private async Task<IResult> UpdatePerson(string key, JsonPatchDocument<PersonPatch> patch)
     {
         var existing = await repository.GetPersonAsync(key);
         if (existing is null)
         {
-            return Results.NotFound();
+            return TypedResults.NotFound();
+        }
+
+        var model = new PersonPatch { Name = existing.Name, Email = existing.Email };
+        if (!TryApplyPatch(patch, model, out var problem))
+        {
+            return problem!;
         }
 
         var updated = existing with
         {
-            Name = request.Name ?? existing.Name,
-            Email = request.Email ?? existing.Email
+            Name = model.Name ?? existing.Name,
+            Email = model.Email ?? existing.Email
         };
 
         await repository.SavePersonAsync(updated);
-        return Results.Ok(updated);
+        return TypedResults.Ok(updated);
     }
 
     private async Task<IResult> DeletePerson(string key)
@@ -188,17 +212,23 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         return Results.Ok(updated);
     }
 
-    private async Task<IResult> UpdateEmployment(string key, EmploymentPatchRequest request)
+    private async Task<IResult> UpdateEmployment(string key, JsonPatchDocument<EmploymentPatch> patch)
     {
         var existing = await repository.GetEmploymentAsync(key);
         if (existing is null)
         {
-            return Results.NotFound();
+            return TypedResults.NotFound();
         }
 
-        var updated = existing with { Title = request.Title ?? existing.Title };
+        var model = new EmploymentPatch { Title = existing.Title };
+        if (!TryApplyPatch(patch, model, out var problem))
+        {
+            return problem!;
+        }
+
+        var updated = existing with { Title = model.Title ?? existing.Title };
         await repository.SaveEmploymentAsync(updated);
-        return Results.Ok(updated);
+        return TypedResults.Ok(updated);
     }
 
     private async Task<IResult> DeleteEmployment(string key)

@@ -186,7 +186,7 @@ public sealed class EidosMapBuilder
         return operation switch
         {
             EidosOperationType.PutState => "{ \"state\": \"<TargetState>\", \"transition\"?: \"<Transition>\" }",
-            EidosOperationType.PatchProperties => "{ ...properties }",
+            EidosOperationType.PatchProperties => "[{ \"op\": \"replace\", \"path\": \"/<prop>\", \"value\": <value> }] (application/json-patch+json)",
             _ => string.Empty
         };
     }
@@ -309,6 +309,9 @@ public sealed record EidosMappedRoute(
 
 public sealed class EidosEntityRouteBuilder
 {
+    // Property updates use JSON Patch (RFC 6902); state changes go through PUT /_state.
+    internal const string JsonPatchMediaType = "application/json-patch+json";
+
     private readonly IEndpointRouteBuilder _endpoints;
     private readonly EntityDeclarationSyntax _declaration;
     private readonly EidosRouteMappingOptions _options;
@@ -497,18 +500,22 @@ public sealed class EidosEntityRouteBuilder
     }
 
     public EidosEntityRouteBuilder Update<TRequest>(Func<string, TRequest, IResult> handler)
+        where TRequest : notnull
     {
         var path = ItemPath();
-        _endpoints.MapMethods(path, ["PATCH"], handler);
+        _endpoints.MapMethods(path, ["PATCH"], handler)
+            .Accepts<TRequest>(JsonPatchMediaType);
         Register(EidosOperationType.PatchProperties);
         RegisterMappedRoute(EidosOperationType.PatchProperties, path, "PATCH");
         return this;
     }
 
     public EidosEntityRouteBuilder Update<TRequest>(Func<string, TRequest, Task<IResult>> handler)
+        where TRequest : notnull
     {
         var path = ItemPath();
-        _endpoints.MapMethods(path, ["PATCH"], handler);
+        _endpoints.MapMethods(path, ["PATCH"], handler)
+            .Accepts<TRequest>(JsonPatchMediaType);
         Register(EidosOperationType.PatchProperties);
         RegisterMappedRoute(EidosOperationType.PatchProperties, path, "PATCH");
         return this;
@@ -518,9 +525,9 @@ public sealed class EidosEntityRouteBuilder
 
     public EidosEntityRouteBuilder PatchState(Func<string, StateTransitionRequest, Task<IResult>> handler) => Transition(handler);
 
-    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) => Update(handler);
+    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) where TRequest : notnull => Update(handler);
 
-    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) => Update(handler);
+    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) where TRequest : notnull => Update(handler);
 
     public EidosEntityRouteBuilder Delete(Func<string, IResult> handler)
     {
@@ -865,12 +872,14 @@ public sealed class EidosRelationshipRouteBuilder
     }
 
     public EidosRelationshipRouteBuilder Update<TRequest>(Func<string, TRequest, IResult> handler)
+        where TRequest : notnull
     {
         _inner.Update(handler);
         return this;
     }
 
     public EidosRelationshipRouteBuilder Update<TRequest>(Func<string, TRequest, Task<IResult>> handler)
+        where TRequest : notnull
     {
         _inner.Update(handler);
         return this;
@@ -880,9 +889,9 @@ public sealed class EidosRelationshipRouteBuilder
 
     public EidosRelationshipRouteBuilder PatchState(Func<string, StateTransitionRequest, Task<IResult>> handler) => Transition(handler);
 
-    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) => Update(handler);
+    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) where TRequest : notnull => Update(handler);
 
-    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) => Update(handler);
+    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) where TRequest : notnull => Update(handler);
 
     public EidosRelationshipRouteBuilder Delete(Func<string, IResult> handler)
     {
