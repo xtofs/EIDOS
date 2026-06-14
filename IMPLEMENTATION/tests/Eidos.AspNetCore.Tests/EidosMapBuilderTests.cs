@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Logging;
 
 namespace Eidos.AspNetCore.Tests;
 
@@ -220,6 +221,8 @@ public class EidosMapBuilderTests
     private static WebApplication BuildApp()
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(LogLevel.None);
         builder.WebHost.UseTestServer();
         return builder.Build();
     }
