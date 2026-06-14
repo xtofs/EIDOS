@@ -178,7 +178,7 @@ public class EidosMapBuilderTests
             .Get(PersonGet)
             .Create(PersonPost)
             .Transition(PersonTransition)
-            .Update<PersonPatchRequest>((key, request) => Results.Ok(new { key, request.Name }))
+            .Update<PersonPatchRequest, object>((key, request) => EidosResult.Ok<object>(new { key, request.Name }))
             .Delete(PersonDelete));
 
         builder.ValidateCoverage();
@@ -219,6 +219,33 @@ public class EidosMapBuilderTests
         Assert.Contains("/organizations/{key}/employments", routePatterns);
     }
 
+    private sealed record SampleDto(string Key, string Name, string State);
+
+    [Fact]
+    public async Task Responses_AreEnrichedWithReservedFields()
+    {
+        var app = BuildApp();
+        var document = EidosGrammarParser.Parse("entity Person { lifecycle: Activatable }");
+
+        app.CreateEidosMapBuilder(document)
+            .Entity("Person", p => p.GetEntity<SampleDto>(key => EidosResult.Ok(new SampleDto(key, "Ada", "Active"))));
+
+        await app.StartAsync();
+        try
+        {
+            var json = await app.GetTestClient().GetStringAsync("/persons/ada");
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            Assert.Equal("Person", doc.RootElement.GetProperty("_type").GetString());
+            Assert.Equal("/persons/ada", doc.RootElement.GetProperty("_self").GetString());
+            Assert.Equal("Active", doc.RootElement.GetProperty("_state").GetString());
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+    }
+
     private static WebApplication BuildApp()
     {
         var builder = WebApplication.CreateBuilder();
@@ -228,27 +255,27 @@ public class EidosMapBuilderTests
         return builder.Build();
     }
 
-    private static IResult PersonList() => Results.Ok();
+    private static EidosResult<object> PersonList() => EidosResult.Ok<object>(Array.Empty<object>());
 
-    private static IResult PersonGet(string key) => Results.Ok(key);
+    private static EidosResult<object> PersonGet(string key) => EidosResult.Ok<object>(new { key });
 
     private static IResult PersonDelete(string key) => Results.NoContent();
 
-    private static IResult PersonTransition(string key, Eidos.AspNetCore.StateTransitionRequest request) => Results.Ok(new { key, request.State });
+    private static EidosResult<object> PersonTransition(string key, StateTransitionRequest request) => EidosResult.Ok<object>(new { key, request.State });
 
     private sealed record PersonPatchRequest(string? Name);
 
-    private static IResult PersonPost() => Results.Created("/persons/1", new { id = 1 });
+    private static EidosResult<object> PersonPost() => EidosResult.Created<object>(new { id = 1 }, "/persons/1");
 
-    private static IResult EmploymentList() => Results.Ok();
+    private static EidosResult<object> EmploymentList() => EidosResult.Ok<object>(Array.Empty<object>());
 
-    private static IResult EmploymentListByParticipant(string participantTypeName, string key) => Results.Ok(new { participantTypeName, key });
+    private static EidosResult<object> EmploymentListByParticipant(string participantTypeName, string key) => EidosResult.Ok<object>(new { participantTypeName, key });
 
-    private static IResult EmploymentPost() => Results.Created("/employments/1", new { id = 1 });
+    private static EidosResult<object> EmploymentPost() => EidosResult.Created<object>(new { id = 1 }, "/employments/1");
 
-    private static IResult EmploymentGet(string key) => Results.Ok(key);
+    private static EidosResult<object> EmploymentGet(string key) => EidosResult.Ok<object>(new { key });
 
-    private static IResult EmploymentTransition(string key, StateTransitionRequest request) => Results.Ok(new { key, request.State });
+    private static EidosResult<object> EmploymentTransition(string key, StateTransitionRequest request) => EidosResult.Ok<object>(new { key, request.State });
 
     private static IResult EmploymentDelete(string key) => Results.NoContent();
 
@@ -443,19 +470,19 @@ public class EidosMapBuilderTests
             map
                 .Entity("Person", p => p
                     .List(PersonList)
-                    .GetEntity(key => new Dictionary<string, object?> { ["key"] = key, ["name"] = key + "-name" })
+                    .GetEntity<IDictionary<string, object?>>(key => EidosResult.Ok<IDictionary<string, object?>>(new Dictionary<string, object?> { ["key"] = key, ["name"] = key + "-name" }))
                     .Transition(PersonTransition)
                     .Delete(PersonDelete)
                     .Create(PersonPost))
                 .Relationship("Employment", e => e
                     .List(EmploymentList)
                     .GetEntity(
-                        key => Results.Ok(new Dictionary<string, object?>
+                        key => Task.FromResult(EidosResult.Ok<IDictionary<string, object?>>(new Dictionary<string, object?>
                         {
                             ["key"] = key,
                             ["employee"] = "person-1",
                             ["employer"] = "person-2"
-                        }),
+                        })),
                         key => Task.FromResult<object?>(new Dictionary<string, object?> { ["key"] = key, ["name"] = key + "-name" }),
                         key => Task.FromResult<object?>(new Dictionary<string, object?> { ["key"] = key, ["name"] = key + "-name" }))
                     .Transition(EmploymentTransition)

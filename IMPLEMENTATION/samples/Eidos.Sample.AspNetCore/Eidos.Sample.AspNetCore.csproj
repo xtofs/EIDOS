@@ -5,10 +5,17 @@
         <ProjectReference Include="..\..\src\Eidos.AspNetCore\Eidos.AspNetCore.csproj" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Microsoft.AspNetCore.JsonPatch.SystemTextJson" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
-        <PackageReference Include="Microsoft.OpenApi" Version="3.7.0" />
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.1" />
+        <EmbeddedResource Include="HumanResources/HumanResourcesSchema.eidos" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.JsonPatch.SystemTextJson"
+                          Version="10.0.9" />
+        <PackageReference Include="Microsoft.Data.Sqlite"
+                          Version="10.0.9" />
+        <PackageReference Include="Microsoft.OpenApi"
+                          Version="3.7.0" />
+        <PackageReference Include="Swashbuckle.AspNetCore"
+                          Version="10.2.1" />
     </ItemGroup>
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>

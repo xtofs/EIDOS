@@ -91,6 +91,7 @@ public sealed class EidosMapBuilder
             _endpoints,
             declaration,
             _options,
+            declaration.Members.OfType<EntityLifecycleMemberSyntax>().Any(),
             Register,
             RegisterMappedRoute,
             RegisterEntityResolver);
@@ -367,6 +368,7 @@ public sealed class EidosEntityRouteBuilder
     private readonly IEndpointRouteBuilder _endpoints;
     private readonly EntityDeclarationSyntax _declaration;
     private readonly EidosRouteMappingOptions _options;
+    private readonly bool _hasLifecycle;
     private readonly Action<EidosResourceType, string, EidosOperationType> _register;
     private readonly Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> _registerMappedRoute;
     private readonly Action<string, Func<string, object?>> _registerEntityResolver;
@@ -375,6 +377,7 @@ public sealed class EidosEntityRouteBuilder
         IEndpointRouteBuilder endpoints,
         EntityDeclarationSyntax declaration,
         EidosRouteMappingOptions options,
+        bool hasLifecycle,
         Action<EidosResourceType, string, EidosOperationType> register,
         Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> registerMappedRoute,
         Action<string, Func<string, object?>> registerEntityResolver)
@@ -382,204 +385,115 @@ public sealed class EidosEntityRouteBuilder
         _endpoints = endpoints;
         _declaration = declaration;
         _options = options;
+        _hasLifecycle = hasLifecycle;
         _register = register;
         _registerMappedRoute = registerMappedRoute;
         _registerEntityResolver = registerEntityResolver;
     }
 
-    public EidosEntityRouteBuilder List(Func<IResult> handler)
+    /// <summary>The reserved-field context for this resource (TypeName, collection segment, lifecycle).</summary>
+    internal ResourceContext Context() => new(_declaration.Name, CollectionPath().TrimStart('/'), _hasLifecycle);
+
+    /// <summary>Maps a raw GET on the item path (used by the relationship builder for the ?expand flow).</summary>
+    internal void MapItemGet(Func<string, HttpRequest, Task<IResult>> handler)
+    {
+        var path = ItemPath();
+        _endpoints.MapGet(path, handler);
+        Register(EidosOperationType.Get);
+        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
+    }
+
+    public EidosEntityRouteBuilder List<T>(Func<Task<EidosResult<T>>> handler)
     {
         var path = CollectionPath();
-        _endpoints.MapGet(path, handler);
+        var context = Context();
+        _endpoints.MapGet(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context));
         Register(EidosOperationType.List);
         RegisterMappedRoute(EidosOperationType.List, path, "GET");
         return this;
     }
 
-    public EidosEntityRouteBuilder List(Func<Task<IResult>> handler)
-    {
-        var path = CollectionPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.List);
-        RegisterMappedRoute(EidosOperationType.List, path, "GET");
-        return this;
-    }
+    public EidosEntityRouteBuilder List<T>(Func<EidosResult<T>> handler) => List(() => Task.FromResult(handler()));
 
-    public EidosEntityRouteBuilder Create<TRequest>(Func<TRequest, IResult> handler)
+    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, Task<EidosResult<T>>> handler)
     {
         var path = CollectionPath();
-        _endpoints.MapPost(path, handler);
+        var context = Context();
+        _endpoints.MapPost(path, async (TRequest body) => RepresentationWriter.Write(await handler(body).ConfigureAwait(false), context));
         Register(EidosOperationType.Create);
         RegisterMappedRoute(EidosOperationType.Create, path, "POST");
         return this;
     }
 
-    public EidosEntityRouteBuilder Create<TRequest>(Func<TRequest, Task<IResult>> handler)
+    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, EidosResult<T>> handler) =>
+        Create<TRequest, T>((TRequest body) => Task.FromResult(handler(body)));
+
+    public EidosEntityRouteBuilder Create<T>(Func<Task<EidosResult<T>>> handler)
     {
         var path = CollectionPath();
-        _endpoints.MapPost(path, handler);
+        var context = Context();
+        _endpoints.MapPost(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context));
         Register(EidosOperationType.Create);
         RegisterMappedRoute(EidosOperationType.Create, path, "POST");
         return this;
     }
 
-    public EidosEntityRouteBuilder Create(Func<IResult> handler)
-    {
-        var path = CollectionPath();
-        _endpoints.MapPost(path, handler);
-        Register(EidosOperationType.Create);
-        RegisterMappedRoute(EidosOperationType.Create, path, "POST");
-        return this;
-    }
+    public EidosEntityRouteBuilder Create<T>(Func<EidosResult<T>> handler) => Create(() => Task.FromResult(handler()));
 
-    public EidosEntityRouteBuilder Create(Func<Task<IResult>> handler)
-    {
-        var path = CollectionPath();
-        _endpoints.MapPost(path, handler);
-        Register(EidosOperationType.Create);
-        RegisterMappedRoute(EidosOperationType.Create, path, "POST");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder Post<TRequest>(Func<TRequest, IResult> handler) => Create(handler);
-
-    public EidosEntityRouteBuilder Post<TRequest>(Func<TRequest, Task<IResult>> handler) => Create(handler);
-
-    public EidosEntityRouteBuilder Post(Func<IResult> handler) => Create(handler);
-
-    public EidosEntityRouteBuilder Post(Func<Task<IResult>> handler) => Create(handler);
-
-    public EidosEntityRouteBuilder Get(Func<string, IResult> handler)
+    public EidosEntityRouteBuilder Get<T>(Func<string, Task<EidosResult<T>>> handler)
     {
         var path = ItemPath();
-        _endpoints.MapGet(path, handler);
+        var context = Context();
+        _endpoints.MapGet(path, async (string key) => RepresentationWriter.Write(await handler(key).ConfigureAwait(false), context));
         Register(EidosOperationType.Get);
         RegisterMappedRoute(EidosOperationType.Get, path, "GET");
         return this;
     }
 
-    public EidosEntityRouteBuilder Get(Func<string, Task<IResult>> handler)
+    public EidosEntityRouteBuilder Get<T>(Func<string, EidosResult<T>> handler) => Get((string key) => Task.FromResult(handler(key)));
+
+    // Like Get, but also registers a resolver so relationship ?expand can embed this entity by key.
+    public EidosEntityRouteBuilder GetEntity<T>(Func<string, Task<EidosResult<T>>> handler)
     {
-        var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
+        _registerEntityResolver(_declaration.Name, key => handler(key).GetAwaiter().GetResult().Value);
+        return Get(handler);
     }
 
-    public EidosEntityRouteBuilder Get(Func<string, HttpRequest, IResult> handler)
+    public EidosEntityRouteBuilder GetEntity<T>(Func<string, EidosResult<T>> handler)
     {
-        var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
+        _registerEntityResolver(_declaration.Name, key => handler(key).Value);
+        return Get(handler);
     }
 
-    public EidosEntityRouteBuilder Get(Func<string, HttpRequest, Task<IResult>> handler)
-    {
-        var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder GetEntity(Func<string, object?> handler)
-    {
-        _registerEntityResolver(_declaration.Name, handler);
-        var path = ItemPath();
-        _endpoints.MapGet(path, (string key) =>
-        {
-            var entity = handler(key);
-            return entity is null ? Results.NotFound() : Results.Ok(entity);
-        });
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder GetEntity(Func<string, IResult> handler)
-    {
-        _registerEntityResolver(_declaration.Name, key => ExtractEntityFromResult(handler(key)));
-        var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder GetEntity(Func<string, Task<IResult>> handler)
-    {
-        _registerEntityResolver(_declaration.Name, key => ExtractEntityFromResult(handler(key).GetAwaiter().GetResult()));
-        var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder GetEntity(Func<string, Task<object?>> handler)
-    {
-        _registerEntityResolver(_declaration.Name, key => handler(key).GetAwaiter().GetResult());
-        var path = ItemPath();
-        _endpoints.MapGet(path, async (string key) =>
-        {
-            var entity = await handler(key).ConfigureAwait(false);
-            return entity is null ? Results.NotFound() : Results.Ok(entity);
-        });
-        Register(EidosOperationType.Get);
-        RegisterMappedRoute(EidosOperationType.Get, path, "GET");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder Transition(Func<string, StateTransitionRequest, IResult> handler)
+    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<EidosResult<T>>> handler)
     {
         var path = StatePath();
-        _endpoints.MapMethods(path, ["PUT"], handler);
+        var context = Context();
+        _endpoints.MapMethods(path, ["PUT"], async (string key, StateTransitionRequest request) =>
+            RepresentationWriter.Write(await handler(key, request).ConfigureAwait(false), context));
         Register(EidosOperationType.PutState);
         RegisterMappedRoute(EidosOperationType.PutState, path, "PUT");
         return this;
     }
 
-    public EidosEntityRouteBuilder Transition(Func<string, StateTransitionRequest, Task<IResult>> handler)
-    {
-        var path = StatePath();
-        _endpoints.MapMethods(path, ["PUT"], handler);
-        Register(EidosOperationType.PutState);
-        RegisterMappedRoute(EidosOperationType.PutState, path, "PUT");
-        return this;
-    }
+    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, EidosResult<T>> handler) =>
+        Transition<T>((string key, StateTransitionRequest request) => Task.FromResult(handler(key, request)));
 
-    public EidosEntityRouteBuilder Update<TRequest>(Func<string, TRequest, IResult> handler)
+    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<EidosResult<T>>> handler)
         where TRequest : notnull
     {
         var path = ItemPath();
-        _endpoints.MapMethods(path, ["PATCH"], handler)
+        var context = Context();
+        _endpoints.MapMethods(path, ["PATCH"], async (string key, TRequest body) =>
+                RepresentationWriter.Write(await handler(key, body).ConfigureAwait(false), context))
             .Accepts<TRequest>(JsonPatchMediaType);
         Register(EidosOperationType.PatchProperties);
         RegisterMappedRoute(EidosOperationType.PatchProperties, path, "PATCH");
         return this;
     }
 
-    public EidosEntityRouteBuilder Update<TRequest>(Func<string, TRequest, Task<IResult>> handler)
-        where TRequest : notnull
-    {
-        var path = ItemPath();
-        _endpoints.MapMethods(path, ["PATCH"], handler)
-            .Accepts<TRequest>(JsonPatchMediaType);
-        Register(EidosOperationType.PatchProperties);
-        RegisterMappedRoute(EidosOperationType.PatchProperties, path, "PATCH");
-        return this;
-    }
-
-    public EidosEntityRouteBuilder PatchState(Func<string, StateTransitionRequest, IResult> handler) => Transition(handler);
-
-    public EidosEntityRouteBuilder PatchState(Func<string, StateTransitionRequest, Task<IResult>> handler) => Transition(handler);
-
-    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) where TRequest : notnull => Update(handler);
-
-    public EidosEntityRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) where TRequest : notnull => Update(handler);
+    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, EidosResult<T>> handler) where TRequest : notnull =>
+        Update<TRequest, T>((string key, TRequest body) => Task.FromResult(handler(key, body)));
 
     public EidosEntityRouteBuilder Delete(Func<string, IResult> handler)
     {
@@ -640,16 +554,6 @@ public sealed class EidosEntityRouteBuilder
     {
         _registerMappedRoute(EidosResourceType.Entity, _declaration.Name, operation, path, methods);
     }
-
-    private static object? ExtractEntityFromResult(IResult result)
-    {
-        if (result is IValueHttpResult valueResult)
-        {
-            return valueResult.Value;
-        }
-
-        return null;
-    }
 }
 
 public sealed class EidosRelationshipRouteBuilder
@@ -682,68 +586,51 @@ public sealed class EidosRelationshipRouteBuilder
         _register = register;
         _registerMappedRoute = registerMappedRoute;
 
+        var hasLifecycle = declaration.Members.OfType<RelationshipLifecycleMemberSyntax>().Any();
+
         _inner = new EidosEntityRouteBuilder(
             endpoints,
             new EntityDeclarationSyntax(declaration.Name, [], [], declaration.Annotations, declaration.Span),
             options,
+            hasLifecycle,
             (_, _, operation) => register(EidosResourceType.Relationship, declaration.Name, operation),
             (_, _, operation, path, methods) => registerMappedRoute(EidosResourceType.Relationship, declaration.Name, operation, path, methods),
             (_, _) => { });
     }
 
-    public EidosRelationshipRouteBuilder List(Func<IResult> handler)
+    private ResourceContext Context() =>
+        new(_declaration.Name, _options.CollectionSegmentStrategy(_declaration.Name), _declaration.Members.OfType<RelationshipLifecycleMemberSyntax>().Any());
+
+    public EidosRelationshipRouteBuilder List<T>(Func<Task<EidosResult<T>>> handler)
     {
         _inner.List(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder List(Func<Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder List<T>(Func<EidosResult<T>> handler)
     {
         _inner.List(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder ListByParticipant(Func<string, string, IResult> handler)
+    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, Task<EidosResult<T>>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
+        var context = Context();
 
         foreach (var anchored in BuildAnchoredCollectionPaths())
         {
-            _endpoints.MapGet(anchored.Path, (HttpRequest request) =>
-            {
-                if (!TryGetRouteValue(request, anchored.RouteParameterName, out var key))
-                {
-                    return Results.BadRequest(new
-                    {
-                        message = $"Missing route value '{anchored.RouteParameterName}'."
-                    });
-                }
+            var participantTypeName = anchored.ParticipantTypeName;
+            var routeParameterName = anchored.RouteParameterName;
 
-                return handler(anchored.ParticipantTypeName, key);
-            });
-            RegisterAnchoredListRoute(anchored.Path);
-        }
-
-        return this;
-    }
-
-    public EidosRelationshipRouteBuilder ListByParticipant(Func<string, string, Task<IResult>> handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-
-        foreach (var anchored in BuildAnchoredCollectionPaths())
-        {
             _endpoints.MapGet(anchored.Path, async (HttpRequest request) =>
             {
-                if (!TryGetRouteValue(request, anchored.RouteParameterName, out var key))
+                if (!TryGetRouteValue(request, routeParameterName, out var key))
                 {
-                    return Results.BadRequest(new
-                    {
-                        message = $"Missing route value '{anchored.RouteParameterName}'."
-                    });
+                    return Results.BadRequest(new { message = $"Missing route value '{routeParameterName}'." });
                 }
 
-                return await handler(anchored.ParticipantTypeName, key).ConfigureAwait(false);
+                return RepresentationWriter.Write(await handler(participantTypeName, key).ConfigureAwait(false), context);
             });
             RegisterAnchoredListRoute(anchored.Path);
         }
@@ -751,199 +638,108 @@ public sealed class EidosRelationshipRouteBuilder
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create<TRequest>(Func<TRequest, IResult> handler)
+    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, EidosResult<T>> handler) =>
+        ListByParticipant<T>((string participantTypeName, string key) => Task.FromResult(handler(participantTypeName, key)));
+
+    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, Task<EidosResult<T>>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create<TRequest>(Func<TRequest, Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, EidosResult<T>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create(Func<IResult> handler)
+    public EidosRelationshipRouteBuilder Create<T>(Func<Task<EidosResult<T>>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create(Func<Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder Create<T>(Func<EidosResult<T>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Post<TRequest>(Func<TRequest, IResult> handler) => Create(handler);
-
-    public EidosRelationshipRouteBuilder Post<TRequest>(Func<TRequest, Task<IResult>> handler) => Create(handler);
-
-    public EidosRelationshipRouteBuilder Post(Func<IResult> handler) => Create(handler);
-
-    public EidosRelationshipRouteBuilder Post(Func<Task<IResult>> handler) => Create(handler);
-
-    public EidosRelationshipRouteBuilder Get(Func<string, IResult> handler)
+    public EidosRelationshipRouteBuilder Get<T>(Func<string, Task<EidosResult<T>>> handler)
     {
         _inner.Get(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Get(Func<string, Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder Get<T>(Func<string, EidosResult<T>> handler)
     {
         _inner.Get(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder GetEntity(Func<string, IDictionary<string, object?>?> handler)
-    {
-        _inner.Get(async (string key, HttpRequest request) =>
-        {
-            var baseEntity = handler(key);
-            if (baseEntity is null)
-            {
-                return Results.NotFound();
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request).ConfigureAwait(false);
-        });
-        return this;
-    }
-
-    public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<IDictionary<string, object?>?>> handler)
-    {
-        _inner.Get(async (string key, HttpRequest request) =>
-        {
-            var baseEntity = await handler(key).ConfigureAwait(false);
-            if (baseEntity is null)
-            {
-                return Results.NotFound();
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request).ConfigureAwait(false);
-        });
-        return this;
-    }
-
-    public EidosRelationshipRouteBuilder GetEntity(Func<string, IResult> handler)
-    {
-        _inner.Get(async (string key, HttpRequest request) =>
-        {
-            var result = handler(key);
-            if (!TryExtractEntityMap(result, out var baseEntity))
-            {
-                return result;
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request).ConfigureAwait(false);
-        });
-        return this;
-    }
+    /// <summary>
+    /// Maps the canonical relationship item GET. The handler returns the representation as a dictionary whose
+    /// participant-named fields hold participant keys; <c>?expand</c> embeds the resolved participants inline.
+    /// Reserved fields are added to the top-level representation by the framework.
+    /// </summary>
+    public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler) =>
+        GetEntity(handler, participantResolvers: null);
 
     public EidosRelationshipRouteBuilder GetEntity(
-        Func<string, IResult> handler,
+        Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler,
         Func<string, Task<object?>> firstParticipantEntityResolver,
         Func<string, Task<object?>> secondParticipantEntityResolver)
     {
-        ArgumentNullException.ThrowIfNull(handler);
         ArgumentNullException.ThrowIfNull(firstParticipantEntityResolver);
         ArgumentNullException.ThrowIfNull(secondParticipantEntityResolver);
-
-        _inner.Get(async (string key, HttpRequest request) =>
-        {
-            var result = handler(key);
-            if (!TryExtractEntityMap(result, out var baseEntity))
-            {
-                return result;
-            }
-
-            var participantResolvers = BuildTwoParticipantResolvers(firstParticipantEntityResolver, secondParticipantEntityResolver);
-            if (participantResolvers is null)
-            {
-                return result;
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request, participantResolvers).ConfigureAwait(false);
-        });
-        return this;
+        return GetEntity(handler, BuildTwoParticipantResolvers(firstParticipantEntityResolver, secondParticipantEntityResolver));
     }
 
-    public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<IResult>> handler)
-    {
-        _inner.Get(async (string key, HttpRequest request) =>
-        {
-            var result = await handler(key).ConfigureAwait(false);
-            if (!TryExtractEntityMap(result, out var baseEntity))
-            {
-                return result;
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request).ConfigureAwait(false);
-        });
-        return this;
-    }
-
-    public EidosRelationshipRouteBuilder GetEntity(
-        Func<string, Task<IResult>> handler,
-        Func<string, Task<object?>> firstParticipantEntityResolver,
-        Func<string, Task<object?>> secondParticipantEntityResolver)
+    private EidosRelationshipRouteBuilder GetEntity(
+        Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler,
+        IReadOnlyDictionary<string, Func<string, Task<object?>>>? participantResolvers)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        ArgumentNullException.ThrowIfNull(firstParticipantEntityResolver);
-        ArgumentNullException.ThrowIfNull(secondParticipantEntityResolver);
+        var context = Context();
 
-        _inner.Get(async (string key, HttpRequest request) =>
+        _inner.MapItemGet(async (string key, HttpRequest request) =>
         {
             var result = await handler(key).ConfigureAwait(false);
-            if (!TryExtractEntityMap(result, out var baseEntity))
+            if (((IEidosRepresentation)result).PassThrough is not null || result.Value is null)
             {
-                return result;
+                return RepresentationWriter.Write(result, context);
             }
 
-            var participantResolvers = BuildTwoParticipantResolvers(firstParticipantEntityResolver, secondParticipantEntityResolver);
-            if (participantResolvers is null)
-            {
-                return result;
-            }
-
-            return await BuildExpandedResultAsync(baseEntity, request, participantResolvers).ConfigureAwait(false);
+            return await ExpandAndWriteAsync(result.Value, request, context, participantResolvers).ConfigureAwait(false);
         });
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Transition(Func<string, StateTransitionRequest, IResult> handler)
+    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<EidosResult<T>>> handler)
     {
         _inner.Transition(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Transition(Func<string, StateTransitionRequest, Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, EidosResult<T>> handler)
     {
         _inner.Transition(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Update<TRequest>(Func<string, TRequest, IResult> handler)
+    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<EidosResult<T>>> handler)
         where TRequest : notnull
     {
         _inner.Update(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Update<TRequest>(Func<string, TRequest, Task<IResult>> handler)
+    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, EidosResult<T>> handler)
         where TRequest : notnull
     {
         _inner.Update(handler);
         return this;
     }
-
-    public EidosRelationshipRouteBuilder PatchState(Func<string, StateTransitionRequest, IResult> handler) => Transition(handler);
-
-    public EidosRelationshipRouteBuilder PatchState(Func<string, StateTransitionRequest, Task<IResult>> handler) => Transition(handler);
-
-    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, IResult> handler) where TRequest : notnull => Update(handler);
-
-    public EidosRelationshipRouteBuilder PatchProperties<TRequest>(Func<string, TRequest, Task<IResult>> handler) where TRequest : notnull => Update(handler);
 
     public EidosRelationshipRouteBuilder Delete(Func<string, IResult> handler)
     {
@@ -969,84 +765,75 @@ public sealed class EidosRelationshipRouteBuilder
         return this;
     }
 
-    private async Task<IResult> BuildExpandedResultAsync(
+    private async Task<IResult> ExpandAndWriteAsync(
         IDictionary<string, object?> baseEntity,
         HttpRequest request,
-        IReadOnlyDictionary<string, Func<string, Task<object?>>>? participantResolvers = null)
+        ResourceContext context,
+        IReadOnlyDictionary<string, Func<string, Task<object?>>>? participantResolvers)
     {
         var expandItems = ParseExpand(request);
-        if (expandItems.Count == 0)
+        if (expandItems.Count > 0)
         {
-            return Results.Ok(baseEntity);
-        }
+            var unknown = expandItems
+                .Where(name => _declaration.Participants.All(p => !string.Equals(p.Name, name, StringComparison.Ordinal)))
+                .ToArray();
 
-        var unknown = expandItems
-            .Where(name => _declaration.Participants.All(p => !string.Equals(p.Name, name, StringComparison.Ordinal)))
-            .ToArray();
-
-        if (unknown.Length > 0)
-        {
-            return Results.BadRequest(new
+            if (unknown.Length > 0)
             {
-                message = $"Unknown expand participant(s): {string.Join(", ", unknown)}"
-            });
-        }
-
-        var expanded = new Dictionary<string, object?>(baseEntity, StringComparer.Ordinal);
-
-        foreach (var participantName in expandItems)
-        {
-            var participant = _declaration.Participants.Single(p => string.Equals(p.Name, participantName, StringComparison.Ordinal));
-
-            if (!expanded.TryGetValue(participantName, out var refValue) || refValue is not string refKey)
-            {
-                _reportDiagnostic(new EidosRouteDiagnostic(
-                    EidosRouteDiagnosticSeverity.Warning,
-                    $"Relationship '{_declaration.Name}' expand '{participantName}' expected a string key field in representation.",
-                    EidosResourceType.Relationship,
-                    _declaration.Name,
-                    EidosOperationType.Get,
-                    _declaration.Span));
-                continue;
+                return Results.BadRequest(new { message = $"Unknown expand participant(s): {string.Join(", ", unknown)}" });
             }
 
-            if (participantResolvers is not null && participantResolvers.TryGetValue(participantName, out var resolver))
+            var expanded = new Dictionary<string, object?>(baseEntity, StringComparer.Ordinal);
+
+            foreach (var participantName in expandItems)
             {
-                var resolved = await resolver(refKey).ConfigureAwait(false);
-                if (resolved is not null)
+                var participant = _declaration.Participants.Single(p => string.Equals(p.Name, participantName, StringComparison.Ordinal));
+
+                if (!expanded.TryGetValue(participantName, out var refValue) || refValue is not string refKey)
                 {
-                    expanded[participantName] = resolved;
+                    WarnExpand(participantName, "expected a string key field in the representation.");
                     continue;
                 }
 
-                _reportDiagnostic(new EidosRouteDiagnostic(
-                    EidosRouteDiagnosticSeverity.Warning,
-                    $"Relationship '{_declaration.Name}' expand '{participantName}' could not resolve key '{refKey}' via configured participant resolver.",
-                    EidosResourceType.Relationship,
-                    _declaration.Name,
-                    EidosOperationType.Get,
-                    _declaration.Span));
-                continue;
+                if (participantResolvers is not null && participantResolvers.TryGetValue(participantName, out var resolver))
+                {
+                    var resolved = await resolver(refKey).ConfigureAwait(false);
+                    if (resolved is not null)
+                    {
+                        expanded[participantName] = resolved;
+                    }
+                    else
+                    {
+                        WarnExpand(participantName, $"could not resolve key '{refKey}' via the configured participant resolver.");
+                    }
+
+                    continue;
+                }
+
+                if (_resolveEntity(participant.TypeName, refKey, out var entity))
+                {
+                    expanded[participantName] = entity;
+                }
+                else
+                {
+                    WarnExpand(participantName, $"could not resolve entity '{participant.TypeName}' by key '{refKey}'.");
+                }
             }
 
-            if (_resolveEntity(participant.TypeName, refKey, out var entity))
-            {
-                expanded[participantName] = entity;
-            }
-            else
-            {
-                _reportDiagnostic(new EidosRouteDiagnostic(
-                    EidosRouteDiagnosticSeverity.Warning,
-                    $"Relationship '{_declaration.Name}' expand '{participantName}' could not resolve entity '{participant.TypeName}' by key '{refKey}'.",
-                    EidosResourceType.Relationship,
-                    _declaration.Name,
-                    EidosOperationType.Get,
-                    _declaration.Span));
-            }
+            baseEntity = expanded;
         }
 
-        return Results.Ok(expanded);
+        return RepresentationWriter.Write(EidosResult.Ok(baseEntity), context);
     }
+
+    private void WarnExpand(string participantName, string detail) =>
+        _reportDiagnostic(new EidosRouteDiagnostic(
+            EidosRouteDiagnosticSeverity.Warning,
+            $"Relationship '{_declaration.Name}' expand '{participantName}' {detail}",
+            EidosResourceType.Relationship,
+            _declaration.Name,
+            EidosOperationType.Get,
+            _declaration.Span));
 
     private IReadOnlyDictionary<string, Func<string, Task<object?>>>? BuildTwoParticipantResolvers(
         Func<string, Task<object?>> firstParticipantEntityResolver,
@@ -1138,15 +925,4 @@ public sealed class EidosRelationshipRouteBuilder
         return parsed;
     }
 
-    private static bool TryExtractEntityMap(IResult result, out IDictionary<string, object?> baseEntity)
-    {
-        if (result is IValueHttpResult { Value: IDictionary<string, object?> value })
-        {
-            baseEntity = value;
-            return true;
-        }
-
-        baseEntity = null!;
-        return false;
-    }
 }

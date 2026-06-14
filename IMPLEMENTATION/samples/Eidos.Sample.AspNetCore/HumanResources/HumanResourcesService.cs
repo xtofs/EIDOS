@@ -1,6 +1,7 @@
 using Eidos.AspNetCore;
 using Eidos.Core;
 using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
+using System.Reflection;
 
 namespace Eidos.Sample.HumanResources;
 
@@ -10,18 +11,27 @@ namespace Eidos.Sample.HumanResources;
 /// </summary>
 internal sealed class HumanResourcesService(IHumanResourcesRepository repository, EidosDocumentSyntax schema)
 {
-    private const string SchemaText = """
-        entity Person {
-            lifecycle: Activatable
-        }
+    private const string SchemaResourceSuffix = ".HumanResources.HumanResourcesSchema.eidos";
 
-        relationship Employment between employee : Person, employer : Person
+    public static EidosDocumentSyntax ParsedSchema { get; } = EidosGrammarParser.Parse(LoadSchemaTextFromResource());
+
+    private static string LoadSchemaTextFromResource()
+    {
+        var assembly = typeof(HumanResourcesService).Assembly;
+        var resourceName = assembly
+            .GetManifestResourceNames()
+            .SingleOrDefault(static name => name.EndsWith(SchemaResourceSuffix, StringComparison.Ordinal));
+
+        if (resourceName is null)
         {
-            lifecycle: Activatable
+            throw new InvalidOperationException($"Could not find embedded schema resource ending with '{SchemaResourceSuffix}'.");
         }
-        """;
 
-    public static EidosDocumentSyntax ParsedSchema { get; } = EidosGrammarParser.Parse(SchemaText);
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Could not open embedded schema resource '{resourceName}'.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
 
     public void MapEndpoints(WebApplication app)
     {
@@ -31,17 +41,17 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                 .Entity("Person", p => p
                     .List(ListPeople)
                     .GetEntity(GetPersonEntity)
-                    .Create<PersonCreateRequest>(CreatePerson)
+                    .Create<PersonCreateRequest, PersonDto>(CreatePerson)
                     .Transition(TransitionPerson)
-                    .Update<JsonPatchDocument<PersonPatch>>(UpdatePerson)
+                    .Update<JsonPatchDocument<PersonPatch>, PersonDto>(UpdatePerson)
                     .Delete(DeletePerson))
                 .Relationship("Employment", e => e
                     .List(ListEmployments)
                     .ListByParticipant(ListEmploymentsByParticipant)
                     .GetEntity(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
-                    .Create<EmploymentCreateRequest>(CreateEmployment)
+                    .Create<EmploymentCreateRequest, EmploymentDto>(CreateEmployment)
                     .Transition(TransitionEmployment)
-                    .Update<JsonPatchDocument<EmploymentPatch>>(UpdateEmployment)
+                    .Update<JsonPatchDocument<EmploymentPatch>, EmploymentDto>(UpdateEmployment)
                     .Delete(DeleteEmployment));
         }, options =>
         {
@@ -49,16 +59,16 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         });
     }
 
-    private async Task<IResult> ListPeople()
-        => Results.Ok(await repository.ListPeopleAsync());
+    private async Task<EidosResult<IReadOnlyList<PersonDto>>> ListPeople()
+        => EidosResult.Ok(await repository.ListPeopleAsync());
 
-    private async Task<IResult> GetPersonEntity(string key)
+    private async Task<EidosResult<PersonDto>> GetPersonEntity(string key)
     {
         var person = await repository.GetPersonAsync(key);
-        return person is null ? Results.NotFound() : Results.Ok(person);
+        return person is null ? EidosResult.NotFound<PersonDto>() : EidosResult.Ok(person);
     }
 
-    private async Task<IResult> CreatePerson(PersonCreateRequest request)
+    private async Task<EidosResult<PersonDto>> CreatePerson(PersonCreateRequest request)
     {
         var key = string.IsNullOrWhiteSpace(request.Key)
             ? $"person-{Guid.NewGuid():N}"[..15]
@@ -68,23 +78,23 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
 
         if (!await repository.TryAddPersonAsync(person))
         {
-            return Results.Conflict(new { message = $"Person with key '{key}' already exists." });
+            return EidosResult.Conflict<PersonDto>(new { message = $"Person with key '{key}' already exists." });
         }
 
-        return Results.Created($"/persons/{key}", person);
+        return EidosResult.Created(person, $"/persons/{key}");
     }
 
-    private async Task<IResult> TransitionPerson(string key, StateTransitionRequest request)
+    private async Task<EidosResult<PersonDto>> TransitionPerson(string key, StateTransitionRequest request)
     {
         var existing = await repository.GetPersonAsync(key);
         if (existing is null)
         {
-            return Results.NotFound();
+            return EidosResult.NotFound<PersonDto>();
         }
 
         var updated = existing with { State = request.State };
         await repository.SavePersonAsync(updated);
-        return Results.Ok(updated);
+        return EidosResult.Ok(updated);
     }
 
     // Apply a JSON Patch (RFC 6902) to a restricted patch model, collecting any errors (e.g. an op
@@ -104,18 +114,18 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         return errors is null;
     }
 
-    private async Task<IResult> UpdatePerson(string key, JsonPatchDocument<PersonPatch> patch)
+    private async Task<EidosResult<PersonDto>> UpdatePerson(string key, JsonPatchDocument<PersonPatch> patch)
     {
         var existing = await repository.GetPersonAsync(key);
         if (existing is null)
         {
-            return TypedResults.NotFound();
+            return EidosResult.NotFound<PersonDto>();
         }
 
-        var model = new PersonPatch { Name = existing.Name, Email = existing.Email };
+        var model = new PersonPatch(existing.Name, existing.Email);
         if (!TryApplyPatch(patch, model, out var problem))
         {
-            return problem!;
+            return EidosResult.FromResult<PersonDto>(problem!);
         }
 
         var updated = existing with
@@ -125,34 +135,34 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         };
 
         await repository.SavePersonAsync(updated);
-        return TypedResults.Ok(updated);
+        return EidosResult.Ok(updated);
     }
 
     private async Task<IResult> DeletePerson(string key)
         => await repository.RemovePersonAsync(key) ? Results.NoContent() : Results.NotFound();
 
-    private async Task<IResult> ListEmployments()
-        => Results.Ok(await repository.ListEmploymentsAsync());
+    private async Task<EidosResult<IReadOnlyList<EmploymentDto>>> ListEmployments()
+        => EidosResult.Ok(await repository.ListEmploymentsAsync());
 
-    private async Task<IResult> ListEmploymentsByParticipant(string participantTypeName, string key)
+    private async Task<EidosResult<IReadOnlyList<EmploymentDto>>> ListEmploymentsByParticipant(string participantTypeName, string key)
     {
         if (!string.Equals(participantTypeName, "Person", StringComparison.Ordinal))
         {
-            return Results.Ok(Array.Empty<EmploymentDto>());
+            return EidosResult.Ok<IReadOnlyList<EmploymentDto>>(Array.Empty<EmploymentDto>());
         }
 
-        return Results.Ok(await repository.ListEmploymentsByParticipantAsync(key));
+        return EidosResult.Ok(await repository.ListEmploymentsByParticipantAsync(key));
     }
 
-    private async Task<IResult> GetEmploymentEntity(string key)
+    private async Task<EidosResult<IDictionary<string, object?>>> GetEmploymentEntity(string key)
     {
         var employment = await repository.GetEmploymentAsync(key);
         if (employment is null)
         {
-            return Results.NotFound();
+            return EidosResult.NotFound<IDictionary<string, object?>>();
         }
 
-        return Results.Ok(new Dictionary<string, object?>(StringComparer.Ordinal)
+        return EidosResult.Ok<IDictionary<string, object?>>(new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["key"] = employment.Key,
             ["employee"] = employment.EmployeeKey,
@@ -165,12 +175,12 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
     private async Task<object?> ResolvePersonForExpand(string key)
         => await repository.GetPersonAsync(key);
 
-    private async Task<IResult> CreateEmployment(EmploymentCreateRequest request)
+    private async Task<EidosResult<EmploymentDto>> CreateEmployment(EmploymentCreateRequest request)
     {
         if (!await repository.PersonExistsAsync(request.EmployeeKey)
             || !await repository.PersonExistsAsync(request.EmployerKey))
         {
-            return Results.BadRequest(new { message = "employeeKey and employerKey must reference existing persons." });
+            return EidosResult.BadRequest<EmploymentDto>(new { message = "employeeKey and employerKey must reference existing persons." });
         }
 
         var key = string.IsNullOrWhiteSpace(request.Key)
@@ -181,42 +191,42 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
 
         if (!await repository.TryAddEmploymentAsync(employment))
         {
-            return Results.Conflict(new { message = $"Employment with key '{key}' already exists." });
+            return EidosResult.Conflict<EmploymentDto>(new { message = $"Employment with key '{key}' already exists." });
         }
 
-        return Results.Created($"/employments/{key}", employment);
+        return EidosResult.Created(employment, $"/employments/{key}");
     }
 
-    private async Task<IResult> TransitionEmployment(string key, StateTransitionRequest request)
+    private async Task<EidosResult<EmploymentDto>> TransitionEmployment(string key, StateTransitionRequest request)
     {
         var existing = await repository.GetEmploymentAsync(key);
         if (existing is null)
         {
-            return Results.NotFound();
+            return EidosResult.NotFound<EmploymentDto>();
         }
 
         var updated = existing with { State = request.State };
         await repository.SaveEmploymentAsync(updated);
-        return Results.Ok(updated);
+        return EidosResult.Ok(updated);
     }
 
-    private async Task<IResult> UpdateEmployment(string key, JsonPatchDocument<EmploymentPatch> patch)
+    private async Task<EidosResult<EmploymentDto>> UpdateEmployment(string key, JsonPatchDocument<EmploymentPatch> patch)
     {
         var existing = await repository.GetEmploymentAsync(key);
         if (existing is null)
         {
-            return TypedResults.NotFound();
+            return EidosResult.NotFound<EmploymentDto>();
         }
 
-        var model = new EmploymentPatch { Title = existing.Title };
+        var model = new EmploymentPatch(existing.Title);
         if (!TryApplyPatch(patch, model, out var problem))
         {
-            return problem!;
+            return EidosResult.FromResult<EmploymentDto>(problem!);
         }
 
         var updated = existing with { Title = model.Title ?? existing.Title };
         await repository.SaveEmploymentAsync(updated);
-        return TypedResults.Ok(updated);
+        return EidosResult.Ok(updated);
     }
 
     private async Task<IResult> DeleteEmployment(string key)

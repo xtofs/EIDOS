@@ -1,0 +1,8 @@
+entity Person {
+    lifecycle: Activatable
+}
+
+relationship Employment between employee : Person, employer : Person
+{
+    lifecycle: Activatable
+}
