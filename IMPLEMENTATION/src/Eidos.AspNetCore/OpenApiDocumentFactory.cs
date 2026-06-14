@@ -10,7 +10,7 @@ namespace Eidos.AspNetCore;
 /// <see cref="OpenApiDocument"/> (Microsoft.OpenApi). This is the only place that depends on Microsoft.OpenApi;
 /// all of the §5.2 mapping logic lives in Eidos.Core. Mechanical 1:1 translation.
 /// </summary>
-internal static class OpenApiDocumentFactory
+public static class OpenApiDocumentFactory
 {
     public static OpenApiDocument Create(OpenApiModel model)
     {
@@ -106,41 +106,41 @@ internal static class OpenApiDocumentFactory
                 return new OpenApiSchemaReference(reference.ComponentName, document);
 
             case ApiObjectSchema obj:
-            {
-                var result = new OpenApiSchema
                 {
-                    Type = JsonSchemaType.Object,
-                    Properties = new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal),
-                    Required = new HashSet<string>(StringComparer.Ordinal)
-                };
-
-                foreach (var property in obj.Properties)
-                {
-                    var propertySchema = ToSchema(property.Schema, document);
-
-                    // Nullable / readOnly only apply to concrete (non-reference) schemas.
-                    if (propertySchema is OpenApiSchema concrete)
+                    var result = new OpenApiSchema
                     {
-                        if (property.Nullable && concrete.Type is { } t)
+                        Type = JsonSchemaType.Object,
+                        Properties = new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal),
+                        Required = new HashSet<string>(StringComparer.Ordinal)
+                    };
+
+                    foreach (var property in obj.Properties)
+                    {
+                        var propertySchema = ToSchema(property.Schema, document);
+
+                        // Nullable / readOnly only apply to concrete (non-reference) schemas.
+                        if (propertySchema is OpenApiSchema concrete)
                         {
-                            concrete.Type = t | JsonSchemaType.Null;
+                            if (property.Nullable && concrete.Type is { } t)
+                            {
+                                concrete.Type = t | JsonSchemaType.Null;
+                            }
+
+                            if (property.ReadOnly)
+                            {
+                                concrete.ReadOnly = true;
+                            }
                         }
 
-                        if (property.ReadOnly)
+                        result.Properties[property.Name] = propertySchema;
+                        if (property.Required)
                         {
-                            concrete.ReadOnly = true;
+                            result.Required.Add(property.Name);
                         }
                     }
 
-                    result.Properties[property.Name] = propertySchema;
-                    if (property.Required)
-                    {
-                        result.Required.Add(property.Name);
-                    }
+                    return result;
                 }
-
-                return result;
-            }
 
             case ApiArraySchema array:
                 return new OpenApiSchema { Type = JsonSchemaType.Array, Items = ToSchema(array.Items, document) };

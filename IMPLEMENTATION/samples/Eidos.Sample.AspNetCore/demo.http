@@ -116,3 +116,14 @@ PATCH {{base}}/persons/chris
 content-type: application/json-patch+json
 
 [{ "op": "replace", "path": "/email", "value": "xtof@example.com" }]
+
+
+# ######################
+# Open API
+
+### Get OpenAPI
+GET {{base}}/swagger/v1/swagger.json
+
+### Get redoc
+GET {{base}}/redoc
+

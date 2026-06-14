@@ -1,6 +1,5 @@
 using Eidos.AspNetCore;
 using Eidos.Core;
-using Eidos.Core.OpenApi;
 using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
 
 namespace Eidos.Sample.HumanResources;
@@ -11,7 +10,7 @@ namespace Eidos.Sample.HumanResources;
 /// </summary>
 internal sealed class HumanResourcesService(IHumanResourcesRepository repository)
 {
-    private const string Schema = """
+    private const string SCHEMA = """
         entity Person {
             lifecycle: Activatable
         }
@@ -22,9 +21,11 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
         }
         """;
 
+    internal static EidosDocumentSyntax ParseSchema() => EidosGrammarParser.Parse(SCHEMA);
+
     public void MapEndpoints(WebApplication app)
     {
-        var schema = EidosGrammarParser.Parse(Schema);
+        var schema = ParseSchema();
 
         app.MapEidos(schema, map =>
         {
@@ -44,8 +45,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                     .Transition(TransitionEmployment)
                     .Update<JsonPatchDocument<EmploymentPatch>>(UpdateEmployment)
                     .Delete(DeleteEmployment))
-                .MapMetadataEndpoint("/")
-                .MapOpenApiEndpoint("/openapi.json", new ApiInfo("Eidos HR Sample", "0.1"));
+                .MapMetadataEndpoint("/");
         }, options =>
         {
             options.OnDiagnostic = diagnostic =>

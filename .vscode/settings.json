@@ -4,6 +4,8 @@
         "DQUOTE",
         "HTAB",
         "lifecycles",
+        "redoc",
+        "Swashbuckle",
         "writeonce",
         "xunit"
     ]

@@ -1,8 +1,7 @@
+using System.Diagnostics;
+using System.Text.Json.Serialization;
 using Eidos.AspNetCore;
 using Eidos.Sample.HumanResources;
-using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.HttpLogging;
-using System.Diagnostics;
 using Microsoft.AspNetCore.WebUtilities;
 
 public partial class Program
@@ -11,10 +10,15 @@ public partial class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        // configure JSON options globally to support PATCH requests with JsonPatchDocument<T> payloads, and to serialize enums as strings in OpenAPI docs
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
         });
+
+        builder.AddEidosOpenApiAndReDoc(
+            HumanResourcesService.ParseSchema(),
+            new Eidos.Core.OpenApi.ApiInfo("Eidos HR Sample", "0.1"));
 
         builder.Logging.AddConsole();
 
@@ -26,6 +30,8 @@ public partial class Program
 
         var app = builder.Build();
         app.Use(SimpleHttpLoggingMiddleware);
+
+        app.MapEidosOpenApiAndReDoc();
 
         // create schema + seed sample data once at startup
         app.Services.GetRequiredService<IHumanResourcesRepository>().Initialize();
@@ -57,4 +63,3 @@ public partial class Program
             sw.ElapsedMilliseconds);
     }
 }
-

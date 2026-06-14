@@ -154,14 +154,14 @@ public sealed class EidosMapBuilder
     }
 
     /// <summary>
-    /// Builds the provider-neutral OpenAPI model (§5.2) for this document. The schema substance comes from
-    /// the parsed AST, not from the runtime route registrations.
-    /// </summary>
-    public OpenApiModel BuildOpenApiModel(ApiInfo info)
-    {
-        ArgumentNullException.ThrowIfNull(info);
-        return OpenApiModelGenerator.Generate(_document, info);
-    }
+    // /// Builds the provider-neutral OpenAPI model (§5.2) for this document. The schema substance comes from
+    // /// the parsed AST, not from the runtime route registrations.
+    // /// </summary>
+    // public OpenApiModel BuildOpenApiModel(ApiInfo info)
+    // {
+    //     ArgumentNullException.ThrowIfNull(info);
+    //     return OpenApiModelGenerator.Generate(_document, info);
+    // }
 
     /// <summary>Serves the generated OpenAPI 3.0 document as JSON at <paramref name="pattern"/>.</summary>
     public EidosMapBuilder MapOpenApiEndpoint(string pattern = "/openapi.json", ApiInfo? info = null)
