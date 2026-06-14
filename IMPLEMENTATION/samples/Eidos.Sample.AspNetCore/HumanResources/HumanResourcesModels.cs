@@ -12,8 +12,8 @@ public sealed record PersonPatch(string? Name, string? Email);
 public sealed record PersonCreateRequest(string? Key, string Name, string Email);
 
 
-public sealed record EmploymentCreateRequest(string? Key, string EmployeeKey, string EmployerKey, string Title);
-
 public sealed record EmploymentDto(string Key, string EmployeeKey, string EmployerKey, string Title, string State);
+
+public sealed record EmploymentCreateRequest(string? Key, string EmployeeKey, string EmployerKey, string Title);
 
 public sealed record EmploymentPatch(string? Title);

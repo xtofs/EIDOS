@@ -403,7 +403,7 @@ public sealed class EidosEntityRouteBuilder
         RegisterMappedRoute(EidosOperationType.Get, path, "GET");
     }
 
-    public EidosEntityRouteBuilder List<T>(Func<Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder List<T>(Func<Task<Response<T>>> handler)
     {
         var path = CollectionPath();
         var context = Context();
@@ -413,9 +413,9 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder List<T>(Func<EidosResult<T>> handler) => List(() => Task.FromResult(handler()));
+    public EidosEntityRouteBuilder List<T>(Func<Response<T>> handler) => List(() => Task.FromResult(handler()));
 
-    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, Task<Response<T>>> handler)
     {
         var path = CollectionPath();
         var context = Context();
@@ -425,10 +425,10 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, EidosResult<T>> handler) =>
+    public EidosEntityRouteBuilder Create<TRequest, T>(Func<TRequest, Response<T>> handler) =>
         Create<TRequest, T>((TRequest body) => Task.FromResult(handler(body)));
 
-    public EidosEntityRouteBuilder Create<T>(Func<Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder Create<T>(Func<Task<Response<T>>> handler)
     {
         var path = CollectionPath();
         var context = Context();
@@ -438,9 +438,9 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder Create<T>(Func<EidosResult<T>> handler) => Create(() => Task.FromResult(handler()));
+    public EidosEntityRouteBuilder Create<T>(Func<Response<T>> handler) => Create(() => Task.FromResult(handler()));
 
-    public EidosEntityRouteBuilder Get<T>(Func<string, Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder Get<T>(Func<string, Task<Response<T>>> handler)
     {
         var path = ItemPath();
         var context = Context();
@@ -450,22 +450,22 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder Get<T>(Func<string, EidosResult<T>> handler) => Get((string key) => Task.FromResult(handler(key)));
+    public EidosEntityRouteBuilder Get<T>(Func<string, Response<T>> handler) => Get((string key) => Task.FromResult(handler(key)));
 
     // Like Get, but also registers a resolver so relationship ?expand can embed this entity by key.
-    public EidosEntityRouteBuilder GetEntity<T>(Func<string, Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder GetEntity<T>(Func<string, Task<Response<T>>> handler)
     {
         _registerEntityResolver(_declaration.Name, key => handler(key).GetAwaiter().GetResult().Value);
         return Get(handler);
     }
 
-    public EidosEntityRouteBuilder GetEntity<T>(Func<string, EidosResult<T>> handler)
+    public EidosEntityRouteBuilder GetEntity<T>(Func<string, Response<T>> handler)
     {
         _registerEntityResolver(_declaration.Name, key => handler(key).Value);
         return Get(handler);
     }
 
-    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<Response<T>>> handler)
     {
         var path = StatePath();
         var context = Context();
@@ -476,10 +476,10 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, EidosResult<T>> handler) =>
+    public EidosEntityRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Response<T>> handler) =>
         Transition<T>((string key, StateTransitionRequest request) => Task.FromResult(handler(key, request)));
 
-    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<EidosResult<T>>> handler)
+    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<Response<T>>> handler)
         where TRequest : notnull
     {
         var path = ItemPath();
@@ -492,7 +492,7 @@ public sealed class EidosEntityRouteBuilder
         return this;
     }
 
-    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, EidosResult<T>> handler) where TRequest : notnull =>
+    public EidosEntityRouteBuilder Update<TRequest, T>(Func<string, TRequest, Response<T>> handler) where TRequest : notnull =>
         Update<TRequest, T>((string key, TRequest body) => Task.FromResult(handler(key, body)));
 
     public EidosEntityRouteBuilder Delete(Func<string, IResult> handler)
@@ -601,19 +601,19 @@ public sealed class EidosRelationshipRouteBuilder
     private ResourceContext Context() =>
         new(_declaration.Name, _options.CollectionSegmentStrategy(_declaration.Name), _declaration.Members.OfType<RelationshipLifecycleMemberSyntax>().Any());
 
-    public EidosRelationshipRouteBuilder List<T>(Func<Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder List<T>(Func<Task<Response<T>>> handler)
     {
         _inner.List(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder List<T>(Func<EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder List<T>(Func<Response<T>> handler)
     {
         _inner.List(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, Task<Response<T>>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
         var context = Context();
@@ -638,40 +638,40 @@ public sealed class EidosRelationshipRouteBuilder
         return this;
     }
 
-    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, EidosResult<T>> handler) =>
+    public EidosRelationshipRouteBuilder ListByParticipant<T>(Func<string, string, Response<T>> handler) =>
         ListByParticipant<T>((string participantTypeName, string key) => Task.FromResult(handler(participantTypeName, key)));
 
-    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, Task<Response<T>>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder Create<TRequest, T>(Func<TRequest, Response<T>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create<T>(Func<Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder Create<T>(Func<Task<Response<T>>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Create<T>(Func<EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder Create<T>(Func<Response<T>> handler)
     {
         _inner.Create(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Get<T>(Func<string, Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder Get<T>(Func<string, Task<Response<T>>> handler)
     {
         _inner.Get(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Get<T>(Func<string, EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder Get<T>(Func<string, Response<T>> handler)
     {
         _inner.Get(handler);
         return this;
@@ -682,11 +682,11 @@ public sealed class EidosRelationshipRouteBuilder
     /// participant-named fields hold participant keys; <c>?expand</c> embeds the resolved participants inline.
     /// Reserved fields are added to the top-level representation by the framework.
     /// </summary>
-    public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler) =>
+    public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<Response<IDictionary<string, object?>>>> handler) =>
         GetEntity(handler, participantResolvers: null);
 
     public EidosRelationshipRouteBuilder GetEntity(
-        Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler,
+        Func<string, Task<Response<IDictionary<string, object?>>>> handler,
         Func<string, Task<object?>> firstParticipantEntityResolver,
         Func<string, Task<object?>> secondParticipantEntityResolver)
     {
@@ -696,7 +696,7 @@ public sealed class EidosRelationshipRouteBuilder
     }
 
     private EidosRelationshipRouteBuilder GetEntity(
-        Func<string, Task<EidosResult<IDictionary<string, object?>>>> handler,
+        Func<string, Task<Response<IDictionary<string, object?>>>> handler,
         IReadOnlyDictionary<string, Func<string, Task<object?>>>? participantResolvers)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -715,26 +715,26 @@ public sealed class EidosRelationshipRouteBuilder
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Task<Response<T>>> handler)
     {
         _inner.Transition(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder Transition<T>(Func<string, StateTransitionRequest, Response<T>> handler)
     {
         _inner.Transition(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<EidosResult<T>>> handler)
+    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, Task<Response<T>>> handler)
         where TRequest : notnull
     {
         _inner.Update(handler);
         return this;
     }
 
-    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, EidosResult<T>> handler)
+    public EidosRelationshipRouteBuilder Update<TRequest, T>(Func<string, TRequest, Response<T>> handler)
         where TRequest : notnull
     {
         _inner.Update(handler);
@@ -823,7 +823,7 @@ public sealed class EidosRelationshipRouteBuilder
             baseEntity = expanded;
         }
 
-        return RepresentationWriter.Write(EidosResult.Ok(baseEntity), context);
+        return RepresentationWriter.Write(Response.Ok(baseEntity), context);
     }
 
     private void WarnExpand(string participantName, string detail) =>
