@@ -692,7 +692,7 @@ public sealed class EidosRelationshipRouteBuilder
     /// Reserved fields are added to the top-level representation by the framework.
     /// </summary>
     public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<Response<IDictionary<string, object?>>>> handler) =>
-        GetEntity(handler, participantResolvers: null);
+        GetSingle(handler, participantResolvers: null);
 
     public EidosRelationshipRouteBuilder GetSingle(
         Func<string, Task<Response<IDictionary<string, object?>>>> handler,
@@ -701,17 +701,17 @@ public sealed class EidosRelationshipRouteBuilder
     {
         ArgumentNullException.ThrowIfNull(firstParticipantEntityResolver);
         ArgumentNullException.ThrowIfNull(secondParticipantEntityResolver);
-        return GetEntity(handler, BuildTwoParticipantResolvers(firstParticipantEntityResolver, secondParticipantEntityResolver));
+        return GetSingle(handler, BuildTwoParticipantResolvers(firstParticipantEntityResolver, secondParticipantEntityResolver));
     }
 
-    private EidosRelationshipRouteBuilder GetEntity(
+    private EidosRelationshipRouteBuilder GetSingle(
         Func<string, Task<Response<IDictionary<string, object?>>>> handler,
         IReadOnlyDictionary<string, Func<string, Task<object?>>>? participantResolvers)
     {
         ArgumentNullException.ThrowIfNull(handler);
         var context = Context();
 
-        _inner.MapItemGet(async (string key, HttpRequest request) =>
+        _inner.MapItemGet(async (key, request) =>
         {
             var result = await handler(key).ConfigureAwait(false);
             if (((IEidosRepresentation)result).PassThrough is not null || result.Value is null)
