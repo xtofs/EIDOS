@@ -415,7 +415,7 @@ public class EidosMapBuilderTests
 
         var app = builder.Build();
 
-        app.MapEidosSurface(document, map =>
+        app.MapEidosRoutes(document, map =>
         {
             map.Entity("Person", p => p
                 .List(PersonList)

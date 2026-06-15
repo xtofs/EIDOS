@@ -20,7 +20,7 @@ public static class EidosEndpointRouteBuilderExtensions
     public static IEndpointRouteBuilder MapEidosHandlers(
         this IEndpointRouteBuilder endpoints,
         EidosDocumentSyntax document,
-        Action<EidosMapBuilder> configure,
+        Action<EidosRouteBuilder> configure,
         Action<EidosRouteMappingOptions>? configureOptions = null,
         IEidosOperationPolicy? operationPolicy = null)
     {
@@ -31,7 +31,7 @@ public static class EidosEndpointRouteBuilderExtensions
         var routeMappingOptions = new EidosRouteMappingOptions();
         configureOptions?.Invoke(routeMappingOptions);
 
-        var builder = new EidosMapBuilder(endpoints, document, routeMappingOptions, operationPolicy ?? new DefaultEidosOperationPolicy());
+        var builder = new EidosRouteBuilder(endpoints, document, routeMappingOptions, operationPolicy ?? new DefaultEidosOperationPolicy());
         configure(builder);
 
         var openApiRouteOptions = endpoints.ServiceProvider.GetService<EidosOpenApiRouteOptions>();
@@ -45,7 +45,7 @@ public static class EidosEndpointRouteBuilderExtensions
         return endpoints;
     }
 
-    public static EidosMapBuilder CreateEidosMapBuilder(
+    public static EidosRouteBuilder CreateEidosMapBuilder(
         this IEndpointRouteBuilder endpoints,
         EidosDocumentSyntax document,
         Action<EidosRouteMappingOptions>? configureOptions = null,
@@ -56,7 +56,7 @@ public static class EidosEndpointRouteBuilderExtensions
 
         var options = new EidosRouteMappingOptions();
         configureOptions?.Invoke(options);
-        return new EidosMapBuilder(endpoints, document, options, operationPolicy ?? new DefaultEidosOperationPolicy());
+        return new EidosRouteBuilder(endpoints, document, options, operationPolicy ?? new DefaultEidosOperationPolicy());
     }
 
     public static WebApplicationBuilder AddEidosOpenApi(
@@ -251,26 +251,36 @@ public static class EidosEndpointRouteBuilderExtensions
     /// Maps the full Eidos HTTP surface: schema-driven handlers, metadata endpoint,
     /// OpenAPI JSON endpoint, and ReDoc UI endpoint.
     /// </summary>
-    public static IEndpointRouteBuilder MapEidosSurface(
+    public static IEndpointRouteBuilder MapEidosRoutes(
         this IEndpointRouteBuilder endpoints,
         EidosDocumentSyntax document,
-        Action<EidosMapBuilder> configure,
+        Action<EidosRouteBuilder> configure,
         Action<EidosRouteMappingOptions>? configureOptions = null,
         IEidosOperationPolicy? operationPolicy = null)
     {
-        ArgumentNullException.ThrowIfNull(endpoints);
-        ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(configure);
 
-        var routeMappingOptions = new EidosRouteMappingOptions();
-        configureOptions?.Invoke(routeMappingOptions);
+        var builder = endpoints.CreateEidosMapBuilder(document, configureOptions, operationPolicy);
+        configure(builder);
+        builder.MapEidosRoutes();
 
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Finishes a builder configured via <see cref="CreateEidosMapBuilder"/>: maps the metadata endpoint,
+    /// validates route coverage, commits the deferred route mappings, and serves the OpenAPI JSON and ReDoc UI
+    /// endpoints. Lets the route configuration read as two statements instead of nested trailing lambdas.
+    /// </summary>
+    public static EidosRouteBuilder MapEidosRoutes(this EidosRouteBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var endpoints = builder.Endpoints;
         var routeOptions = endpoints.ServiceProvider.GetRequiredService<EidosOpenApiRouteOptions>();
         var metadataOptions = endpoints.ServiceProvider.GetService<EidosMetadataOptions>();
         var metadataPath = metadataOptions?.MetadataPath ?? "/routes";
 
-        var builder = new EidosMapBuilder(endpoints, document, routeMappingOptions, operationPolicy ?? new DefaultEidosOperationPolicy());
-        configure(builder);
         builder.MapMetadataEndpoint(metadataPath);
         builder.ValidateCoverage();
         builder.Build();
@@ -290,7 +300,7 @@ public static class EidosEndpointRouteBuilderExtensions
             return Results.Content(html, "text/html");
         });
 
-        return endpoints;
+        return builder;
     }
 
     /// <summary>

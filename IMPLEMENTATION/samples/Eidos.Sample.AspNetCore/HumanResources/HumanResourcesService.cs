@@ -35,28 +35,25 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
 
     public void MapEndpoints(WebApplication app)
     {
-        app.MapEidosSurface(schema, map =>
-        {
-            map
-                .Entity("Person", p => p
-                    .List(ListPeople)
-                    .GetSingle(GetPersonEntity)
-                    .Create<PersonCreateRequest, PersonDto>(CreatePerson)
-                    .Transition(TransitionPerson)
-                    .Update<JsonPatchDocument<PersonPatch>, PersonDto>(UpdatePerson)
-                    .Delete(DeletePerson))
-                .Relationship("Employment", e => e
-                    .List(ListEmployments)
-                    .ListByParticipant(ListEmploymentsByParticipant)
-                    .GetSingle(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
-                    .Create<EmploymentCreateRequest, EmploymentDto>(CreateEmployment)
-                    .Transition(TransitionEmployment)
-                    .Update<JsonPatchDocument<EmploymentPatch>, EmploymentDto>(UpdateEmployment)
-                    .Delete(DeleteEmployment));
-        }, options =>
-        {
-            options.OnDiagnostic = diagnostic => app.Logger.LogDiagnostic(diagnostic);
-        });
+        var map = app.CreateEidosMapBuilder(schema, options =>
+                options.OnDiagnostic = diagnostic => app.Logger.LogDiagnostic(diagnostic))
+            .Entity("Person", p => p
+                .List(ListPeople)
+                .GetSingle(GetPersonEntity)
+                .Create<PersonCreateRequest, PersonDto>(CreatePerson)
+                .Transition(TransitionPerson)
+                .Update<JsonPatchDocument<PersonPatch>, PersonDto>(UpdatePerson)
+                .Delete(DeletePerson))
+            .Relationship("Employment", e => e
+                .List(ListEmployments)
+                .ListByParticipant(ListEmploymentsByParticipant)
+                .GetSingle(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
+                .Create<EmploymentCreateRequest, EmploymentDto>(CreateEmployment)
+                .Transition(TransitionEmployment)
+                .Update<JsonPatchDocument<EmploymentPatch>, EmploymentDto>(UpdateEmployment)
+                .Delete(DeleteEmployment));
+
+        map.MapEidosRoutes();
     }
 
     private async Task<Response<IReadOnlyList<PersonDto>>> ListPeople()
@@ -141,6 +138,9 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
     private async Task<IResult> DeletePerson(string key)
         => await repository.RemovePersonAsync(key) ? Results.NoContent() : Results.NotFound();
 
+    private async Task<Response<object>> DeletePerson2(string key)
+        => await repository.RemovePersonAsync(key) ? Response.NoContent() : Response.NotFound();
+
     private async Task<Response<IReadOnlyList<EmploymentDto>>> ListEmployments()
         => Response.Ok(await repository.ListEmploymentsAsync());
 
@@ -148,7 +148,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
     {
         if (!string.Equals(participantTypeName, "Person", StringComparison.Ordinal))
         {
-            return Response.Ok<IReadOnlyList<EmploymentDto>>(Array.Empty<EmploymentDto>());
+            return Response.Ok<IReadOnlyList<EmploymentDto>>([]);
         }
 
         return Response.Ok(await repository.ListEmploymentsByParticipantAsync(key));

@@ -9,7 +9,7 @@ using System.IO;
 
 namespace Eidos.AspNetCore;
 
-public sealed class EidosMapBuilder
+public sealed class EidosRouteBuilder
 {
     private readonly IEndpointRouteBuilder _endpoints;
     private readonly EidosRouteMappingOptions _options;
@@ -31,7 +31,7 @@ public sealed class EidosMapBuilder
 
     private readonly EidosDocumentSyntax _document;
 
-    internal EidosMapBuilder(
+    internal EidosRouteBuilder(
         IEndpointRouteBuilder endpoints,
         EidosDocumentSyntax document,
         EidosRouteMappingOptions options,
@@ -56,6 +56,9 @@ public sealed class EidosMapBuilder
         _options.CollectionSegmentStrategy = typeName => UrlHintSegment(typeName) ?? configuredSegment(typeName);
     }
 
+    /// <summary>The endpoint route builder this surface maps onto. Exposed for same-assembly extensions.</summary>
+    internal IEndpointRouteBuilder Endpoints => _endpoints;
+
     private string? UrlHintSegment(string typeName)
     {
         if (_entities.TryGetValue(typeName, out var entity)
@@ -73,7 +76,7 @@ public sealed class EidosMapBuilder
         return null;
     }
 
-    public EidosMapBuilder Entity(string name, Action<EidosEntityRouteBuilder> configure)
+    public EidosRouteBuilder Entity(string name, Action<EidosEntityRouteBuilder> configure)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(configure);
@@ -103,7 +106,7 @@ public sealed class EidosMapBuilder
         return this;
     }
 
-    public EidosMapBuilder Relationship(string name, Action<EidosRelationshipRouteBuilder> configure)
+    public EidosRouteBuilder Relationship(string name, Action<EidosRelationshipRouteBuilder> configure)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(configure);
@@ -187,7 +190,7 @@ public sealed class EidosMapBuilder
     /// Commits every route recorded during configuration to the endpoint route builder. Idempotent.
     /// Call after <see cref="ValidateCoverage"/> so a surface that fails validation never wires routes.
     /// </summary>
-    public EidosMapBuilder Build()
+    public EidosRouteBuilder Build()
     {
         if (_built)
         {
@@ -203,7 +206,7 @@ public sealed class EidosMapBuilder
         return this;
     }
 
-    public EidosMapBuilder MapMetadataEndpoint(string pattern = "/")
+    public EidosRouteBuilder MapMetadataEndpoint(string pattern = "/")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
         _endpoints.MapGet(pattern, GetMetadata);
@@ -218,7 +221,7 @@ public sealed class EidosMapBuilder
     }
 
     /// <summary>Serves the generated OpenAPI 3.0 document as JSON at <paramref name="pattern"/>.</summary>
-    public EidosMapBuilder MapOpenApiEndpoint(string pattern = "/openapi.json", ApiInfo? info = null)
+    public EidosRouteBuilder MapOpenApiEndpoint(string pattern = "/openapi.json", ApiInfo? info = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
         var apiInfo = info ?? new ApiInfo("Eidos API", "0.1");
