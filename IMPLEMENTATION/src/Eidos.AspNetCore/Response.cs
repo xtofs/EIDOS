@@ -104,8 +104,16 @@ public static class Response
     public static Response<T> Created<T>(T value, string? location = null) =>
         new(value, StatusCodes.Status201Created, location, passThrough: null);
 
-    /// <summary>404 Not Found (no representation).</summary>
+    /// <summary>204 No Content.</summary>
+    public static Response<object> NoContent() => new(default, StatusCodes.Status204NoContent, null, Results.NoContent());
+
+
+    /// <summary>404 Not Found.</summary>
+    public static Response<object> NotFound() => new(default, StatusCodes.Status404NotFound, null, Results.NotFound());
+
+    /// <summary>404 Not Found.</summary>
     public static Response<T> NotFound<T>() => new(default, StatusCodes.Status404NotFound, null, Results.NotFound());
+
 
     /// <summary>409 Conflict, optionally with a problem body.</summary>
     public static Response<T> Conflict<T>(object? problem = null) =>

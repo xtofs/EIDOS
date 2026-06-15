@@ -11,17 +11,15 @@ public static class EidosRouteDiagnosticExtensions
         _ => LogLevel.Debug
     };
 
-    public static LogLevel ToLogLevel(this EidosRouteDiagnostic diagnostic) => diagnostic.Severity.ToLogLevel();
-
     public static void LogDiagnostic(this ILogger logger, EidosRouteDiagnostic diagnostic)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(diagnostic);
 
-        logger.Log(
-            diagnostic.ToLogLevel(),
-            "Eidos mapping {Severity}: {Message}",
-            diagnostic.Severity,
-            diagnostic.Message);
+        var level = diagnostic.Severity.ToLogLevel();
+        if (logger.IsEnabled(level))
+        {
+            logger.Log(level, "Eidos mapping {Severity}: {Message}", diagnostic.Severity, diagnostic.Message);
+        }
     }
 }
