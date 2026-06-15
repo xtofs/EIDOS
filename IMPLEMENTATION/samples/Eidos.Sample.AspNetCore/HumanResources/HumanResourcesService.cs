@@ -50,6 +50,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                     .ListByParticipant(ListEmploymentsByParticipant)
                     .GetSingle(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
                     .Create<EmploymentCreateRequest, EmploymentDto>(CreateEmployment)
+                    .Transition(TransitionEmployment)
                     .Update<JsonPatchDocument<EmploymentPatch>, EmploymentDto>(UpdateEmployment)
                     .Delete(DeleteEmployment));
         }, options =>

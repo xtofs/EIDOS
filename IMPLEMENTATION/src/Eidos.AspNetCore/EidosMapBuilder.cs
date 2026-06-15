@@ -18,10 +18,13 @@ public sealed class EidosMapBuilder
     private readonly Dictionary<string, EntityDeclarationSyntax> _entities;
     private readonly Dictionary<string, RelationshipDeclarationSyntax> _relationships;
 
-    private readonly Dictionary<(EidosResourceType Type, string Name), HashSet<EidosOperationType>> _registrations =
-        new();
     private readonly List<EidosRouteDiagnostic> _preValidationDiagnostics = [];
     private readonly List<EidosMappedRoute> _mappedRoutes = [];
+
+    // Route mappings recorded during configuration and committed to the endpoint route builder in one pass
+    // by Build(), so validation can run (and fail) before any route is wired.
+    private readonly List<Action> _pendingMaps = [];
+    private bool _built;
 
     private readonly Dictionary<string, Func<string, object?>> _entityResolvers =
         new(StringComparer.Ordinal);
@@ -92,9 +95,9 @@ public sealed class EidosMapBuilder
             declaration,
             _options,
             declaration.Members.OfType<EntityLifecycleMemberSyntax>().Any(),
-            Register,
             RegisterMappedRoute,
-            RegisterEntityResolver);
+            RegisterEntityResolver,
+            Defer);
         configure(builder);
 
         return this;
@@ -121,10 +124,10 @@ public sealed class EidosMapBuilder
             _endpoints,
             declaration,
             _options,
-            Register,
             RegisterMappedRoute,
             TryResolveEntity,
-            ReportImmediateDiagnostic);
+            ReportImmediateDiagnostic,
+            Defer);
         configure(builder);
 
         return this;
@@ -134,6 +137,12 @@ public sealed class EidosMapBuilder
     {
         var diagnostics = new List<EidosRouteDiagnostic>();
 
+        // Which operations are registered per resource, derived from the mapped routes (the single
+        // source of truth for what was actually wired).
+        var registeredByResource = _mappedRoutes
+            .GroupBy(r => (r.ResourceType, r.ResourceName))
+            .ToDictionary(g => g.Key, g => g.Select(r => r.Operation).ToHashSet());
+
         foreach (var entity in _entities.Values)
         {
             ValidateResourceCoverage(
@@ -141,6 +150,7 @@ public sealed class EidosMapBuilder
                 entity.Name,
                 entity.Span,
                 _operationPolicy.RequiredForEntity(entity),
+                registeredByResource,
                 diagnostics);
         }
 
@@ -151,6 +161,7 @@ public sealed class EidosMapBuilder
                 relationship.Name,
                 relationship.Span,
                 _operationPolicy.RequiredForRelationship(relationship),
+                registeredByResource,
                 diagnostics);
         }
 
@@ -167,6 +178,29 @@ public sealed class EidosMapBuilder
         }
 
         return diagnostics;
+    }
+
+    /// <summary>Records a route mapping to be committed by <see cref="Build"/>.</summary>
+    private void Defer(Action map) => _pendingMaps.Add(map);
+
+    /// <summary>
+    /// Commits every route recorded during configuration to the endpoint route builder. Idempotent.
+    /// Call after <see cref="ValidateCoverage"/> so a surface that fails validation never wires routes.
+    /// </summary>
+    public EidosMapBuilder Build()
+    {
+        if (_built)
+        {
+            return this;
+        }
+
+        _built = true;
+        foreach (var map in _pendingMaps)
+        {
+            map();
+        }
+
+        return this;
     }
 
     public EidosMapBuilder MapMetadataEndpoint(string pattern = "/")
@@ -266,10 +300,10 @@ public sealed class EidosMapBuilder
         string resourceName,
         SourceSpan span,
         IReadOnlySet<EidosOperationType> required,
+        IReadOnlyDictionary<(EidosResourceType, string), HashSet<EidosOperationType>> registeredByResource,
         List<EidosRouteDiagnostic> diagnostics)
     {
-        var key = (resourceType, resourceName);
-        _registrations.TryGetValue(key, out var registered);
+        registeredByResource.TryGetValue((resourceType, resourceName), out var registered);
         registered ??= [];
 
         foreach (var operation in required)
@@ -299,18 +333,6 @@ public sealed class EidosMapBuilder
                     span));
             }
         }
-    }
-
-    private void Register(EidosResourceType resourceType, string name, EidosOperationType operation)
-    {
-        var key = (resourceType, name);
-        if (!_registrations.TryGetValue(key, out var operations))
-        {
-            operations = [];
-            _registrations[key] = operations;
-        }
-
-        operations.Add(operation);
     }
 
     private void RegisterMappedRoute(
@@ -369,26 +391,26 @@ public sealed class EidosEntityRouteBuilder
     private readonly EntityDeclarationSyntax _declaration;
     private readonly EidosRouteMappingOptions _options;
     private readonly bool _hasLifecycle;
-    private readonly Action<EidosResourceType, string, EidosOperationType> _register;
     private readonly Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> _registerMappedRoute;
     private readonly Action<string, Func<string, object?>> _registerEntityResolver;
+    private readonly Action<Action> _defer;
 
     internal EidosEntityRouteBuilder(
         IEndpointRouteBuilder endpoints,
         EntityDeclarationSyntax declaration,
         EidosRouteMappingOptions options,
         bool hasLifecycle,
-        Action<EidosResourceType, string, EidosOperationType> register,
         Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> registerMappedRoute,
-        Action<string, Func<string, object?>> registerEntityResolver)
+        Action<string, Func<string, object?>> registerEntityResolver,
+        Action<Action> defer)
     {
         _endpoints = endpoints;
         _declaration = declaration;
         _options = options;
         _hasLifecycle = hasLifecycle;
-        _register = register;
         _registerMappedRoute = registerMappedRoute;
         _registerEntityResolver = registerEntityResolver;
+        _defer = defer;
     }
 
     /// <summary>The reserved-field context for this resource (TypeName, collection segment, lifecycle).</summary>
@@ -398,8 +420,7 @@ public sealed class EidosEntityRouteBuilder
     internal void MapItemGet(Func<string, HttpRequest, Task<IResult>> handler)
     {
         var path = ItemPath();
-        _endpoints.MapGet(path, handler);
-        Register(EidosOperationType.Get);
+        _defer(() => _endpoints.MapGet(path, handler));
         RegisterMappedRoute(EidosOperationType.Get, path, "GET");
     }
 
@@ -407,8 +428,7 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = CollectionPath();
         var context = Context();
-        _endpoints.MapGet(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context));
-        Register(EidosOperationType.List);
+        _defer(() => _endpoints.MapGet(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context)));
         RegisterMappedRoute(EidosOperationType.List, path, "GET");
         return this;
     }
@@ -419,8 +439,7 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = CollectionPath();
         var context = Context();
-        _endpoints.MapPost(path, async (TRequest body) => RepresentationWriter.Write(await handler(body).ConfigureAwait(false), context));
-        Register(EidosOperationType.Create);
+        _defer(() => _endpoints.MapPost(path, async (TRequest body) => RepresentationWriter.Write(await handler(body).ConfigureAwait(false), context)));
         RegisterMappedRoute(EidosOperationType.Create, path, "POST");
         return this;
     }
@@ -432,8 +451,7 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = CollectionPath();
         var context = Context();
-        _endpoints.MapPost(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context));
-        Register(EidosOperationType.Create);
+        _defer(() => _endpoints.MapPost(path, async () => RepresentationWriter.Write(await handler().ConfigureAwait(false), context)));
         RegisterMappedRoute(EidosOperationType.Create, path, "POST");
         return this;
     }
@@ -444,8 +462,7 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = ItemPath();
         var context = Context();
-        _endpoints.MapGet(path, async (string key) => RepresentationWriter.Write(await handler(key).ConfigureAwait(false), context));
-        Register(EidosOperationType.Get);
+        _defer(() => _endpoints.MapGet(path, async (string key) => RepresentationWriter.Write(await handler(key).ConfigureAwait(false), context)));
         RegisterMappedRoute(EidosOperationType.Get, path, "GET");
         return this;
     }
@@ -469,9 +486,8 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = StatePath();
         var context = Context();
-        _endpoints.MapMethods(path, ["PUT"], async (string key, StateTransitionRequest request) =>
-            RepresentationWriter.Write(await handler(key, request).ConfigureAwait(false), context));
-        Register(EidosOperationType.PutState);
+        _defer(() => _endpoints.MapMethods(path, ["PUT"], async (string key, StateTransitionRequest request) =>
+            RepresentationWriter.Write(await handler(key, request).ConfigureAwait(false), context)));
         RegisterMappedRoute(EidosOperationType.PutState, path, "PUT");
         return this;
     }
@@ -484,10 +500,9 @@ public sealed class EidosEntityRouteBuilder
     {
         var path = ItemPath();
         var context = Context();
-        _endpoints.MapMethods(path, ["PATCH"], async (string key, TRequest body) =>
+        _defer(() => _endpoints.MapMethods(path, ["PATCH"], async (string key, TRequest body) =>
                 RepresentationWriter.Write(await handler(key, body).ConfigureAwait(false), context))
-            .Accepts<TRequest>(JsonPatchMediaType);
-        Register(EidosOperationType.PatchProperties);
+            .Accepts<TRequest>(JsonPatchMediaType));
         RegisterMappedRoute(EidosOperationType.PatchProperties, path, "PATCH");
         return this;
     }
@@ -498,8 +513,7 @@ public sealed class EidosEntityRouteBuilder
     public EidosEntityRouteBuilder Delete(Func<string, IResult> handler)
     {
         var path = ItemPath();
-        _endpoints.MapDelete(path, handler);
-        Register(EidosOperationType.Delete);
+        _defer(() => _endpoints.MapDelete(path, handler));
         RegisterMappedRoute(EidosOperationType.Delete, path, "DELETE");
         return this;
     }
@@ -507,8 +521,7 @@ public sealed class EidosEntityRouteBuilder
     public EidosEntityRouteBuilder Delete(Func<string, Task<IResult>> handler)
     {
         var path = ItemPath();
-        _endpoints.MapDelete(path, handler);
-        Register(EidosOperationType.Delete);
+        _defer(() => _endpoints.MapDelete(path, handler));
         RegisterMappedRoute(EidosOperationType.Delete, path, "DELETE");
         return this;
     }
@@ -545,11 +558,6 @@ public sealed class EidosEntityRouteBuilder
             : $"{_customItemPath}/_state";
     }
 
-    private void Register(EidosOperationType operation)
-    {
-        _register(EidosResourceType.Entity, _declaration.Name, operation);
-    }
-
     private void RegisterMappedRoute(EidosOperationType operation, string path, params string[] methods)
     {
         _registerMappedRoute(EidosResourceType.Entity, _declaration.Name, operation, path, methods);
@@ -564,8 +572,8 @@ public sealed class EidosRelationshipRouteBuilder
     private readonly RelationshipDeclarationSyntax _declaration;
     private readonly TryResolveEntityDelegate _resolveEntity;
     private readonly Action<EidosRouteDiagnostic> _reportDiagnostic;
-    private readonly Action<EidosResourceType, string, EidosOperationType> _register;
     private readonly Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> _registerMappedRoute;
+    private readonly Action<Action> _defer;
 
     internal delegate bool TryResolveEntityDelegate(string kindName, string key, out object? entity);
 
@@ -573,18 +581,18 @@ public sealed class EidosRelationshipRouteBuilder
         IEndpointRouteBuilder endpoints,
         RelationshipDeclarationSyntax declaration,
         EidosRouteMappingOptions options,
-        Action<EidosResourceType, string, EidosOperationType> register,
         Action<EidosResourceType, string, EidosOperationType, string, IReadOnlyList<string>> registerMappedRoute,
         TryResolveEntityDelegate resolveEntity,
-        Action<EidosRouteDiagnostic> reportDiagnostic)
+        Action<EidosRouteDiagnostic> reportDiagnostic,
+        Action<Action> defer)
     {
         _endpoints = endpoints;
         _options = options;
         _declaration = declaration;
         _resolveEntity = resolveEntity;
         _reportDiagnostic = reportDiagnostic;
-        _register = register;
         _registerMappedRoute = registerMappedRoute;
+        _defer = defer;
 
         var hasLifecycle = declaration.Members.OfType<RelationshipLifecycleMemberSyntax>().Any();
 
@@ -593,9 +601,9 @@ public sealed class EidosRelationshipRouteBuilder
             new EntityDeclarationSyntax(declaration.Name, [], [], declaration.Annotations, declaration.Span),
             options,
             hasLifecycle,
-            (_, _, operation) => register(EidosResourceType.Relationship, declaration.Name, operation),
             (_, _, operation, path, methods) => registerMappedRoute(EidosResourceType.Relationship, declaration.Name, operation, path, methods),
-            (_, _) => { });
+            (_, _) => { },
+            defer);
     }
 
     private ResourceContext Context() =>
@@ -623,7 +631,8 @@ public sealed class EidosRelationshipRouteBuilder
             var participantTypeName = anchored.ParticipantTypeName;
             var routeParameterName = anchored.RouteParameterName;
 
-            _endpoints.MapGet(anchored.Path, async (HttpRequest request) =>
+            var path = anchored.Path;
+            _defer(() => _endpoints.MapGet(path, async (HttpRequest request) =>
             {
                 if (!TryGetRouteValue(request, routeParameterName, out var key))
                 {
@@ -631,7 +640,7 @@ public sealed class EidosRelationshipRouteBuilder
                 }
 
                 return RepresentationWriter.Write(await handler(participantTypeName, key).ConfigureAwait(false), context);
-            });
+            }));
             RegisterAnchoredListRoute(anchored.Path);
         }
 
@@ -880,7 +889,6 @@ public sealed class EidosRelationshipRouteBuilder
 
     private void RegisterAnchoredListRoute(string path)
     {
-        _register(EidosResourceType.Relationship, _declaration.Name, EidosOperationType.List);
         _registerMappedRoute(EidosResourceType.Relationship, _declaration.Name, EidosOperationType.List, path, ["GET"]);
     }
 

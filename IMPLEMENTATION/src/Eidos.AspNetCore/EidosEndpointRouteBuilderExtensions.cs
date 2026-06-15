@@ -40,6 +40,7 @@ public static class EidosEndpointRouteBuilderExtensions
         builder.MapMetadataEndpoint(metadataPath);
 
         builder.ValidateCoverage();
+        builder.Build();
 
         return endpoints;
     }
@@ -272,6 +273,7 @@ public static class EidosEndpointRouteBuilderExtensions
         configure(builder);
         builder.MapMetadataEndpoint(metadataPath);
         builder.ValidateCoverage();
+        builder.Build();
 
         endpoints.MapGet(routeOptions.OpenApiPath, (OpenApiDocument openApiDocument) =>
         {

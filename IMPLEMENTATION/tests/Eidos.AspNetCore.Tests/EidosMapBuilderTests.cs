@@ -228,7 +228,8 @@ public class EidosMapBuilderTests
         var document = EidosGrammarParser.Parse("entity Person { lifecycle: Activatable }");
 
         app.CreateEidosMapBuilder(document)
-            .Entity("Person", p => p.GetEntity<SampleDto>(key => Response.Ok(new SampleDto(key, "Ada", "Active"))));
+            .Entity("Person", p => p.GetEntity<SampleDto>(key => Response.Ok(new SampleDto(key, "Ada", "Active"))))
+            .Build();
 
         await app.StartAsync();
         try
