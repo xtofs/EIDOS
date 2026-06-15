@@ -453,7 +453,7 @@ public sealed class EidosEntityRouteBuilder
     public EidosEntityRouteBuilder Get<T>(Func<string, Response<T>> handler) => Get((string key) => Task.FromResult(handler(key)));
 
     // Like Get, but also registers a resolver so relationship ?expand can embed this entity by key.
-    public EidosEntityRouteBuilder GetEntity<T>(Func<string, Task<Response<T>>> handler)
+    public EidosEntityRouteBuilder GetSingle<T>(Func<string, Task<Response<T>>> handler)
     {
         _registerEntityResolver(_declaration.Name, key => handler(key).GetAwaiter().GetResult().Value);
         return Get(handler);
@@ -685,7 +685,7 @@ public sealed class EidosRelationshipRouteBuilder
     public EidosRelationshipRouteBuilder GetEntity(Func<string, Task<Response<IDictionary<string, object?>>>> handler) =>
         GetEntity(handler, participantResolvers: null);
 
-    public EidosRelationshipRouteBuilder GetEntity(
+    public EidosRelationshipRouteBuilder GetSingle(
         Func<string, Task<Response<IDictionary<string, object?>>>> handler,
         Func<string, Task<object?>> firstParticipantEntityResolver,
         Func<string, Task<object?>> secondParticipantEntityResolver)

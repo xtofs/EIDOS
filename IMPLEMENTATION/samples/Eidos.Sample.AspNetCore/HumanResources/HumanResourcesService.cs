@@ -40,7 +40,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
             map
                 .Entity("Person", p => p
                     .List(ListPeople)
-                    .GetEntity(GetPersonEntity)
+                    .GetSingle(GetPersonEntity)
                     .Create<PersonCreateRequest, PersonDto>(CreatePerson)
                     .Transition(TransitionPerson)
                     .Update<JsonPatchDocument<PersonPatch>, PersonDto>(UpdatePerson)
@@ -48,7 +48,7 @@ internal sealed class HumanResourcesService(IHumanResourcesRepository repository
                 .Relationship("Employment", e => e
                     .List(ListEmployments)
                     .ListByParticipant(ListEmploymentsByParticipant)
-                    .GetEntity(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
+                    .GetSingle(GetEmploymentEntity, ResolvePersonForExpand, ResolvePersonForExpand)
                     .Create<EmploymentCreateRequest, EmploymentDto>(CreateEmployment)
                     .Update<JsonPatchDocument<EmploymentPatch>, EmploymentDto>(UpdateEmployment)
                     .Delete(DeleteEmployment));

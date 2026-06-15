@@ -476,7 +476,7 @@ public class EidosMapBuilderTests
                     .Create(PersonPost))
                 .Relationship("Employment", e => e
                     .List(EmploymentList)
-                    .GetEntity(
+                    .GetSingle(
                         key => Task.FromResult(Response.Ok<IDictionary<string, object?>>(new Dictionary<string, object?>
                         {
                             ["key"] = key,
